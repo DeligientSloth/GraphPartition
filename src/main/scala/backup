@@ -1,0 +1,304 @@
+import org.apache.spark.rdd.RDD
+import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.sql.SparkSession
+import scala.util.control.Breaks._
+
+
+class Node(var idx:Any,
+           var neighbour:List[Tuple2[Any,Double]],
+           var E:Double,
+           var I:Double=0,
+           var chosen:Boolean=false,
+           var partition:Boolean=true) extends Serializable {
+  var __idx:Any=idx
+  var __neighbour:List[(Any, Double)]=neighbour
+  var __E:Double=E
+  var __I:Double=I
+  var __chosen:Boolean=chosen
+  var __partition:Boolean=partition//表示这个点是否在第一个图里面
+
+  def set_E(E:Double):Node={
+    this.__E = E
+    return this
+  }
+  def set_I(I:Double):Node={
+    this.__I = I
+    return this
+  }
+  def set_chosen(chosen:Boolean):Node={
+    this.__chosen = chosen
+    return this
+  }
+  def set_partition(partition:Boolean):Node={
+    this.__partition = partition
+    return this
+  }
+  def weight(otherNode:Node): Double ={
+    val weight = this.__neighbour.filter(x=>x._1==otherNode.__idx)
+    if(weight.length==0) return 0
+    return weight(0)._2
+  }
+
+  def print(): Unit ={
+    println(this.__idx,this.__E,this.__I,this.partition,this.chosen)
+  }
+}
+
+object KernighanLin {
+
+  def main(args: Array[String]): Unit = {
+
+    val sparkSession = SparkSession
+      .builder()
+      .appName("Spark SQL basic example")
+      .master("local")
+      .config("spark.some.config.option", "some-value")
+      .getOrCreate()
+    // For implicit conversions like converting RDDs to DataFrames
+    import sparkSession.implicits._
+    val df = sparkSession.read.csv("test.csv")
+
+    val partition_1  = Array[Any]("1", "2")
+    val partition_2  = Array[Any]("3", "4")
+
+    /**
+      * 1、首先组织一下数据，原来是两两连接的点，现在是(点:key, tuple(点，weight):value)
+      *    也就是把连接点和连接的权重组织成一个tuple
+      * 2、聚合相同的点，得到邻近点的集合，注意，临近点是一个tuple(点，weight)
+      *    并且转化为List
+      * 3、计算每个点跟两个子图连接的权重，定义了一个函数计算
+      *    思路是filter出那些在子图里面的点的集合，map一下只保留权重，进而sum
+      * 4、可以通过map，生成每一个点的类，partition表示这个点在第一个graph与否
+      * */
+
+
+    var df_rdd = df.rdd.map(x=>(x(0), x(1)))
+    df_rdd = df_rdd.union(df_rdd.map(x=>(x._2, x._1)))
+    val data = df_rdd.map(
+      x=>(x._1, (x._2, 1.0)
+      ))
+    data.foreach(println)
+
+
+    var node_rdd = data.combineByKey(
+      (x:(Any, Double))=>
+        (
+          List(x),
+          //计算当前连接点跟graph1的连接权重
+          if(partition_1.contains(x._1)) x._2 else 0.0,
+          //计算当前连接点跟graph2的连接权重
+          if(partition_2.contains(x._1)) x._2 else 0.0
+        ),//相当于对value做了一次变换，方便计算
+
+      (combineValue:(List[(Any,Double)], Double, Double), x:(Any, Double))=>
+        (
+          combineValue._1:+x,
+          //合并：累计跟graph1的连接权重+同一个分区不同key对连接点跟graph1的权重
+          combineValue._2+(if(partition_1.contains(x._1)) x._2 else 0.0),
+          //合并：累计跟graph2的连接权重+同一个分区不同key对连接点跟graph2的权重
+          combineValue._3+(if(partition_2.contains(x._1)) x._2 else 0.0)
+        ),//聚合一个分区内部不同key的值，value对应领域
+      //(if(partition_1.contains(x._1)) {println("haha");x._2} else 0.0
+      (combineValue1:(List[(Any,Double)], Double, Double),
+       combineValue2:(List[(Any,Double)], Double, Double))=>
+        (
+          combineValue1._1:::combineValue2._1,
+          //合并不同分区的累计权重
+          combineValue1._2+combineValue2._2,
+          combineValue1._3+combineValue2._3
+        )
+    ).map(
+      x=>(
+        x._1, x._2._1,x._2._2,x._2._3,partition_1.contains(x._1)
+      )
+    ).map(
+      x=>(
+        x._1, x._2,
+        if(x._5) x._4 else x._3,//在第一个图中，E是图2的连接，I是图1的连接
+        if(x._5) x._3 else x._4,//在第一个图中，I是图2的连接，E是图1的连接
+        x._5,
+        )
+    ).map(
+      x=>new Node(x._1, x._2, x._3, x._4, false, x._5)
+    )
+
+    node_rdd.foreach(x=>println(x.__idx, x.__E, x.__I,
+      x.__neighbour, x.__partition, x.__chosen))
+
+
+
+    //calculate example
+    var gain_max = 0.0
+    var swap_node_a:Node=null
+    var swap_node_b:Node=null
+    var chosenNum = 0
+    var node_a:Node = null
+    var node_b:Node = null
+    var pairNode = null
+
+    breakable{
+      do{
+
+        println("进入下一轮")
+//        node_rdd.foreach(x=>println(x.__idx, x.__E, x.__I,
+//          x.__neighbour, x.__partition, x.__chosen))
+
+
+        swap_node_a = null
+        swap_node_b = null
+        gain_max = 0.0
+
+//        node_rdd.cartesian(node_rdd).foreach(x=>{
+//          println("第一个点")
+//          x._1.print()
+//          println("第二个点")
+//          x._2.print()
+//        })
+
+        for(a<-partition_1)
+          for(b<-partition_2){
+            //println(node_rdd.filter(x=>(x.__idx==a)).take(1), node_rdd.filter(x=>(x.__idx==b)).take(1))
+
+            node_a = node_rdd.filter(x=>(x.__idx==a)).take(1)(0)
+            node_b = node_rdd.filter(x=>(x.__idx==b)).take(1)(0)
+            node_a.print()
+            node_b.print()
+
+            //println(node_rdd.filter(x=>(x.__idx==a)).take(1), node_rdd.filter(x=>(x.__idx==b)).take(1))
+            if(node_a.chosen==false&&node_b.chosen==false){
+              val gain:Double = (node_a.__E-node_a.__I)+
+                (node_b.__E-node_b.__I) - node_a.weight(node_b)
+              println("two node : "+node_a.__idx+"and"+node_b.__idx+" with gain "+gain)
+
+              if(gain>gain_max){
+                gain_max = gain
+                swap_node_a=node_a
+                swap_node_b=node_b
+
+              }
+            }
+
+          }//for end
+        println("=========我看这个扑街变了没=================")
+        node_rdd.foreach(x=>x.print())
+
+        println(swap_node_a, swap_node_b)
+        println(swap_node_a==null)
+        println(swap_node_b==null)
+        if(swap_node_a==null || swap_node_b==null) {
+          println("哈哈哈哈哈哈哈哈哈")
+          break()
+        }
+
+        //swap
+        println("swap two node : "+swap_node_a.__idx+"and"+swap_node_b.__idx+" wirh gain "+gain_max)
+        chosenNum+=1
+
+        val E_a = swap_node_a.__E
+        val I_a = swap_node_a.__I
+
+        node_rdd = node_rdd.map(x=>{
+          if(swap_node_a!=null&&x.__idx ==swap_node_a.__idx)
+            x.set_E(I_a).set_I(E_a).set_chosen(true).set_partition(false)
+          else x
+        })
+
+
+        //edit point b
+        val E_b = swap_node_b.__E
+        val I_b = swap_node_b.__I
+        node_rdd = node_rdd.map(x=>{
+          if(swap_node_b!=null&&x.__idx==swap_node_b.__idx)
+            x.set_E(I_b).set_I(E_b).set_chosen(true).set_partition(true)
+          else x
+        })
+
+
+        //edit graph 1
+        //for those connect with a
+        //a走了，所以与a连接的点I减少了与a连接的权重，E增加了与a连接的权重
+        node_rdd = node_rdd.map(x=>{
+          //选出graph1中与a连接的点
+          if(swap_node_a!=null&&(x.__partition==true)&&(x.__neighbour.map(e=>e._1).contains(swap_node_a.__idx))) {
+            x.set_I(
+              //这些点的I减小了与a连接的权重
+              //getWeight(x.__idx, swap_node_a.__idx, weight)
+              x.__I - x.weight(swap_node_a)
+            ).set_E(
+              //这些点的E增加了与a连接的权重
+              x.__E + x.weight(swap_node_a)
+            )}
+            else x
+        })
+        //for those connect with b
+        //b进来了，所以与b的连接点I增加了与b连接的权重，E减小了与b连接的权重
+        node_rdd = node_rdd.map(x=>{
+          //选出graph1中与b连接的点
+          if(swap_node_b!=null&&(x.__partition==true)&&(x.__neighbour.map(e=>e._1).contains(swap_node_b.__idx))) {
+            x.set_I(
+              //这些点的I增加了与b连接的权重
+              x.__I + x.weight(swap_node_b)
+            ).set_E(
+              //这些点的E减小了与b连接的权重
+              x.__E - x.weight(swap_node_b)
+            )
+          }
+          else x
+        })
+
+        //edit graph 2
+        //for those connect with a
+        //a进来了，所以与a连接的点I增加了与a连接的权重，E减小了与a连接的权重
+        node_rdd = node_rdd.map(x=>{
+          //选出graph2中与a连接的点
+          if(swap_node_a!=null&&(x.__partition==false)&&(x.__neighbour.map(e=>e._1).contains(swap_node_a.__idx)))
+            x.set_I(
+              //这些点的I增加了与a连接的权重
+              x.__I + x.weight(swap_node_a)
+            ).set_E(
+              //这些点的E减小了与a连接的权重
+              x.__E - x.weight(swap_node_a)
+            )
+          else x
+        })
+        //for those connect with b
+        //b离开了，所以与b的连接点I减小了与b连接的权重，E增加了与b连接的权重
+        node_rdd = node_rdd.map(x=>{
+          //选出graph2中与b连接的点
+          if(swap_node_b!=null&&(x.__partition==false)&&(x.__neighbour.map(e=>e._1).contains(swap_node_b.__idx)))
+            x.set_I(
+              //这些点的I减小了与b连接的权重
+              x.__I - x.weight(swap_node_b)
+            ).set_E(
+              //这些点的E增加了与b连接的权重
+              x.__E + x.weight(swap_node_b)
+            )
+          else x
+        })
+        println("一轮结束：")
+        node_rdd.foreach(x=>println(x.__idx, x.__E, x.__I,
+          x.__neighbour, x.__partition, x.__chosen))
+
+
+        partition_1(partition_1.indexOf(swap_node_a.__idx)) = swap_node_b.__idx
+        partition_2(partition_2.indexOf(swap_node_b.__idx)) = swap_node_a.__idx
+
+        partition_1.foreach(println)
+        partition_2.foreach(println)
+
+
+        println("===========================")
+        node_rdd.foreach(x=>println(x.__idx, x.__E, x.__I,
+          x.__neighbour, x.__partition, x.__chosen))
+
+//        node_rdd = node_rdd_
+
+        node_rdd = node_rdd.cache()
+
+      }while(chosenNum!=partition_1.length&&gain_max>0)//所有的点都选完或者最大增益小于0
+
+    }//breakbale end
+
+  }
+
+}
