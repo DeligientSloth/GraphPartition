@@ -11,7 +11,7 @@ import partition.SpectralClustering
 
 object GraphPartition {
 
-  def readGraphCSV(filePath:String,isDirected:Boolean):RDD[(String,String,Double)]={
+  def readGraph(filePath:String,isDirected:Boolean):RDD[(String,String,Double)]={
     val sparkSession = SparkSession
       .builder()
       .appName("Graph Partition")
@@ -19,17 +19,29 @@ object GraphPartition {
       .config("spark.some.config.option", "some-value")
       .getOrCreate()
 
-    val df_rdd = sparkSession.read.csv(filePath).rdd //dataframe to rdd
-    val edgeRDD = df_rdd.map(x=>(x(0).toString, x(1).toString, 1.0))
+    val fileType:String = filePath.split('.')(1)
+
+    val rdd = fileType match{
+      case "txt"=>sparkSession.sparkContext.textFile(filePath).map(_.split(" "))
+      case "csv"=>sparkSession.read.csv(filePath).rdd.map(x=>x.toSeq.toArray)
+      case _ => sparkSession.read.csv(filePath).rdd.map(x=>x.toSeq.toArray)
+    }
+
+    val edgeRDD = rdd.map(x=> {
+        if(x.length==2) (x(0).toString, x(1).toString, 1.0)
+        else (x(0).toString, x(1).toString, x(2).toString.toDouble)
+      }
+    )
 
     if(isDirected) edgeRDD
-    else edgeRDD.union(edgeRDD.map(x=>(x._2, x._1, 1.0)))
+    else edgeRDD.union(edgeRDD.map(x=>(x._2, x._1, x._3)))
 
   }
+
   def main(args: Array[String]): Unit = {
 
 
-    val edgeRDD = readGraphCSV(args(0),false).persist()
+    val edgeRDD = readGraph(args(0),false).persist()
     var graph = new Graph(edgeRDD)//构建图
 
     val startTime = new Date().getTime

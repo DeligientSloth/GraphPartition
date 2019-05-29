@@ -82,14 +82,16 @@ object KernighanLin{
         var gain_max = 0.0
         var count:Int = 0
         var evalList:List[Double] = List()
-
+        println("开始进入KL")
         breakable{
             do{
-                gain_max = getMaxGain(graph)
+                gain_max = iteration(graph)
 
                 count+=1
                 chosenNum+=1
 
+                if(gain_max<=0) break()
+                println(chosenNum,gain_max)
                 evalList:+=graph.graphPartitionEvaluation
 
             }while(chosenNum < partitionSize && gain_max > 0)//所有的点都选完或者最大增益小于0
@@ -104,9 +106,8 @@ object KernighanLin{
     }
 
     // Iteration
-    def getMaxGain(graph: Graph): Double={
+    def iteration(graph: Graph): Double={
 
-        var gain_max = 0.0
         var swap_node_a: Node = null
         var swap_node_b: Node = null
 
@@ -114,42 +115,37 @@ object KernighanLin{
         def notInSameGraph(node1:Node, node2:Node):Boolean =
             node1.getPartition != node2.getPartition
 
-        //两个点都没有被选择过
-        def unChosen(node1:Node, node2:Node):Boolean =
-            (!node1.getChosen) && (!node2.getChosen)
-
         //无向图去重
         def distinct(node1:Node, node2:Node):Boolean =
             node1.getIdx.toString < node2.getIdx.toString
 
-        val node_gain = graph.nodeRDD.cartesian(graph.nodeRDD).filter(
+        val nodeUnChosen = graph.nodeRDD.filter(!_.getChosen)
+        val node_gain = nodeUnChosen.cartesian(nodeUnChosen).filter(
             x=>
                 distinct(x._1,x._2) &&
-                  notInSameGraph(x._1, x._2) &&
-                  unChosen(x._1, x._2)
+                  notInSameGraph(x._1, x._2)
         ).map(x=>{
             (x, x._1.swapGain(x._2))
-        })
-
+        }).filter(_._2>0)
+//        node_gain.foreach(println)
+//        println("=============================================================")
         //理论上来说不需要判断node_gain是否为空，如果没有满足条件的点，上一个循环以经退出
         //判断是否为空需要action，消耗较大，可以判断partitions参数是否为空，空RDD没有分区
 
-        val max_gain_item = node_gain.reduce((x,y)=>{
-            if(x._2 >= y._2) x else y
-        })
+        if(node_gain.isEmpty()) -1000.0
+        else {
+            val max_gain_item = node_gain.reduce((x,y)=>{
+                if(x._2 >= y._2) x else y
+            })
 
-        if(max_gain_item._2 > 0){
             swap_node_a = max_gain_item._1._1
             swap_node_b = max_gain_item._1._2
-            gain_max = max_gain_item._2
-        }
-        else{
-            break()
+            swapUpdate(graph, swap_node_a, swap_node_b)
+
+            max_gain_item._2
+
         }
 
-        swapUpdate(graph, swap_node_a, swap_node_b)
-
-        gain_max
     }
 
 }
