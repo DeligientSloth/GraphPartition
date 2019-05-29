@@ -18,7 +18,7 @@ spark_submit_command = "spark-submit --class \"{scala_class}\" \
         scala_class = "GraphPartition",
         master = "local[4]",
         jar = ".\\target\\scala-2.12\\sparkgraph_2.12-0.1.jar",
-        args = ".\\test\\network.csv"
+        args = ".\\data\\network.csv"
     )
 
 os.system(sbt_compile_command + "&&" + spark_submit_command)
