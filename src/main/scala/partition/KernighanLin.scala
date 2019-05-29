@@ -1,5 +1,7 @@
 package partition
 
+import org.apache.spark.rdd.RDD
+
 import util.Graph
 import util.Node
 import scala.util.Random
@@ -47,7 +49,7 @@ object KernighanLin{
     }// End of randomPartition
 
     // Implement Kernighan-Lin Algorithm
-    def partition(graph:Graph, seed:Long):Graph= {
+    def partition(graph:Graph, seed:Long, needMaxGain:Boolean):Graph= {
 
         // Random partition for initialization
         val vertex_partition = randomPartition(graph, seed)
@@ -58,12 +60,14 @@ object KernighanLin{
         println("两个子图的大小分别为："+ vertex_partition(0).length+" "+ vertex_partition(1).length)
         println("最多需要交换："+partitionSize+"次")
 
-        partition(graph, vertex_partition)
+        partition(graph, vertex_partition,needMaxGain:Boolean)
         graph
     }// End of KernighanLin
 
     // Random partition for initialization
-    def partition(graph:Graph, init_vertex_partition:List[Array[String]]):Graph={
+    def partition(graph:Graph,
+                  init_vertex_partition:List[Array[String]],
+                  needMaxGain:Boolean):Graph={
 
         if(init_vertex_partition.length>2){
             println("非法输入")
@@ -85,13 +89,14 @@ object KernighanLin{
         println("开始进入KL")
         breakable{
             do{
-                gain_max = iteration(graph)
+                gain_max = iteration(graph,needMaxGain)
 
                 count+=1
                 chosenNum+=1
 
-                if(gain_max<=0) break()
                 println(chosenNum,gain_max)
+                if(gain_max<=0) break()
+
                 evalList:+=graph.graphPartitionEvaluation
 
             }while(chosenNum < partitionSize && gain_max > 0)//所有的点都选完或者最大增益小于0
@@ -104,46 +109,63 @@ object KernighanLin{
 
         graph
     }
+    //不在一个子图里面
+    def notInSameGraph(node1:Node, node2:Node):Boolean =
+        node1.getPartition != node2.getPartition
 
-    // Iteration
-    def iteration(graph: Graph): Double={
+    //无向图去重
+    def distinct(node1:Node, node2:Node):Boolean =
+        node1.getIdx.toString < node2.getIdx.toString
 
-        var swap_node_a: Node = null
-        var swap_node_b: Node = null
 
-        //不在一个子图里面
-        def notInSameGraph(node1:Node, node2:Node):Boolean =
-            node1.getPartition != node2.getPartition
-
-        //无向图去重
-        def distinct(node1:Node, node2:Node):Boolean =
-            node1.getIdx.toString < node2.getIdx.toString
-
-        val nodeUnChosen = graph.nodeRDD.filter(!_.getChosen)
+    def getMaxGain(nodeUnChosen:RDD[Node]): (Node,Node,Double) ={
         val node_gain = nodeUnChosen.cartesian(nodeUnChosen).filter(
             x=>
                 distinct(x._1,x._2) &&
                   notInSameGraph(x._1, x._2)
         ).map(x=>{
-            (x, x._1.swapGain(x._2))
-        }).filter(_._2>0)
-//        node_gain.foreach(println)
-//        println("=============================================================")
-        //理论上来说不需要判断node_gain是否为空，如果没有满足条件的点，上一个循环以经退出
-        //判断是否为空需要action，消耗较大，可以判断partitions参数是否为空，空RDD没有分区
+            (x._1,x._2,x._1.swapGain(x._2))
+        }).filter(_._3>0)
 
-        if(node_gain.isEmpty()) -1000.0
-        else {
-            val max_gain_item = node_gain.reduce((x,y)=>{
-                if(x._2 >= y._2) x else y
-            })
+        if(node_gain.isEmpty()) null
+        else node_gain.reduce((x,y)=>{
+            if(x._3 >= y._3) x else y
+        })
+    }
+    // Iteration
+    def iteration(graph: Graph, needMaxGain:Boolean): Double={
 
-            swap_node_a = max_gain_item._1._1
-            swap_node_b = max_gain_item._1._2
+        var swap_node_a: Node = null
+        var swap_node_b: Node = null
+        var maxGain:Double = 0.0
+
+        val nodeUnChosen = graph.nodeRDD.filter(!_.getChosen)
+
+        if(needMaxGain){
+
+            val maxItem = getMaxGain(nodeUnChosen)
+
+            if(maxItem==null) return -1000.0
+            swap_node_a = maxItem._1
+            swap_node_b = maxItem._2
+            maxGain = maxItem._3
             swapUpdate(graph, swap_node_a, swap_node_b)
 
-            max_gain_item._2
+            maxGain
+        }
+        else{
+            val graph0 = nodeUnChosen.filter(_.getPartition==0).collect()
+            val graph1 = nodeUnChosen.filter(_.getPartition==1).collect()
 
+            for(node0<-graph0;node1<-graph1){
+                maxGain = node0.swapGain(node1)
+                if(maxGain>0) {
+                    swapUpdate(graph, node0, node1)
+                    return maxGain
+                }
+            }
+            if(maxGain<=0) return -1000.0
+            0
         }
 
     }
