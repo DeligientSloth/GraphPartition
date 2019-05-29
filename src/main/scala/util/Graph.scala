@@ -101,7 +101,7 @@ class Graph(edge:RDD[(Any,Any,Double)]) extends Serializable {
         this
     } // End of swapUpdate
 
-    def graphPartitionEvaluation:Double={
+    def graphPartitionEvaluation: Double={
         //计算图内聚和图外连
         /**
          * 把点map为E和，计算E和I的总和，

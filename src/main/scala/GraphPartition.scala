@@ -33,7 +33,7 @@ object GraphPartition {
         // graph.KernighanLin(1234)//运行算法
         partition(graph, 1234)//运行算法
     //    graph.KernighanLin(init_vertex_partition)
-        graph.Print()//打印图
+        // graph.Print()//打印图
         val performance_KL = graph.graphPartitionEvaluation//评价图分割结果
         printf("图分割的performance为：%f", performance_KL)
 
