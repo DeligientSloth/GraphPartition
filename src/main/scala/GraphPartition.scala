@@ -13,7 +13,7 @@ object GraphPartition {
       .getOrCreate()
     // For implicit conversions like converting RDDs to DataFrames
     import sparkSession.implicits._
-    val df = sparkSession.read.csv("./test/network.csv")
+    val df = sparkSession.read.csv("./test/test2.csv")
 
     val df_rdd = df.rdd
 //    val vertex_partition_1  = Array[Any]("1", "2")
@@ -27,8 +27,8 @@ object GraphPartition {
 
 
     val graph = new Graph(edgeRDD)//构建图
-    graph.KernighanLin(1234)//运行算法
-//    graph.KernighanLin(init_vertex_partition)
+//    graph.KernighanLin(1234)//运行算法
+    graph.KernighanLin(init_vertex_partition)
     graph.Print()//打印图
     val performance_KL = graph.graphPartitionEvaluation//评价图分割结果
     printf("图分割的performance为：%f", performance_KL)
