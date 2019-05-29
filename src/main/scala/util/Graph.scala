@@ -1,9 +1,6 @@
 package util
 
 import org.apache.spark.rdd.RDD
-import scala.util.control.Breaks._
-
-import scala.util.Random
 
 class Graph(edge:RDD[(Any,Any,Double)]) extends Serializable {
 
@@ -26,43 +23,38 @@ class Graph(edge:RDD[(Any,Any,Double)]) extends Serializable {
         lists.flatten.toMap
     }
 
-    def buildPartitionGraph():Graph=this
-
-    def buildPartitionGraph(vertex_partition:List[Array[Any]]):Graph={
+    private def buildPartitionGraph():Graph={
         /**
-         * 1、首先组织一下数据，原来是两两连接的点，现在是(点:key, tuple(点，weight):value)
-        *    也就是把连接点和连接的权重组织成一个tuple
-        * 2、聚合相同的点，得到邻近点的集合，注意，临近点是一个tuple(点，weight)
-        *    并且转化为List
-        * 3、计算每个点跟两个子图连接的权重，定义了一个函数计算
-        *    思路是filter出那些在子图里面的点的集合，map一下只保留权重，进而sum
-        * 4、可以通过map，生成每一个点的类，partition表示这个点在第一个graph与否
-        * */
-        this.vertex_partition = vertex_partition
-        this.map_idx_partition = idx_to_partition(vertex_partition)
-
+          * 1、首先组织一下数据，原来是两两连接的点，现在是(点:key, tuple(点，weight):value)
+          *    也就是把连接点和连接的权重组织成一个tuple
+          * 2、聚合相同的点，得到邻近点的集合，注意，临近点是一个tuple(点，weight)
+          *    并且转化为List
+          * 3、计算每个点跟两个子图连接的权重，定义了一个函数计算
+          *    思路是filter出那些在子图里面的点的集合，map一下只保留权重，进而sum
+          * 4、可以通过map，生成每一个点的类，partition表示这个点在第一个graph与否
+          * */
         val createCombiner =(x:(Any,Any,Double))=>{
-        (
-            List((x._2,x._3)),
-            if(map_idx_partition(x._1)!=map_idx_partition(x._2)) x._3 else 0,
-            if(map_idx_partition(x._1)==map_idx_partition(x._2)) x._3 else 0
-        )
+            (
+              List((x._2,x._3)),
+              if(map_idx_partition(x._1)!=map_idx_partition(x._2)) x._3 else 0,
+              if(map_idx_partition(x._1)==map_idx_partition(x._2)) x._3 else 0
+            )
         }
         val mergeValue = (combineValue:(List[(Any,Double)],Double,Double),
-                        x:(Any,Any,Double))=>{
-        (
-            combineValue._1:+(x._2,x._3),
-            combineValue._2+(if(map_idx_partition(x._1)!=map_idx_partition(x._2)) x._3 else 0),
-            combineValue._3+(if(map_idx_partition(x._1)==map_idx_partition(x._2)) x._3 else 0)
-        )
+                          x:(Any,Any,Double))=>{
+            (
+              combineValue._1:+(x._2,x._3),
+              combineValue._2+(if(map_idx_partition(x._1)!=map_idx_partition(x._2)) x._3 else 0),
+              combineValue._3+(if(map_idx_partition(x._1)==map_idx_partition(x._2)) x._3 else 0)
+            )
         }//end method
         val mergeCombiner = (combineValue1:(List[(Any,Double)],Double,Double),
-                            combineValue2:(List[(Any,Double)],Double,Double))=>{
-        (
-            combineValue1._1:::combineValue2._1,
-            combineValue1._2+combineValue2._2,
-            combineValue1._3+combineValue2._3
-        )
+                             combineValue2:(List[(Any,Double)],Double,Double))=>{
+            (
+              combineValue1._1:::combineValue2._1,
+              combineValue1._2+combineValue2._2,
+              combineValue1._3+combineValue2._3
+            )
         }//end method
 
         this.nodeRDD = edgeRDD.map(x=>(x._1,x)).combineByKey(
@@ -74,7 +66,19 @@ class Graph(edge:RDD[(Any,Any,Double)]) extends Serializable {
         ).map(
             x=>new Node(x._1,x._2,x._3,x._4,map_idx_partition(x._1),false)
         )
-        this
+        return this
+    }
+
+    def buildPartitionGraph(assignment: RDD[(String,Int)]):Graph={
+        this.map_idx_partition = assignment.collect().toMap
+        buildPartitionGraph()
+    }
+    def buildPartitionGraph(vertex_partition:List[Array[Any]]):Graph={
+
+        this.vertex_partition = vertex_partition
+        this.map_idx_partition = idx_to_partition(vertex_partition)
+
+        buildPartitionGraph()
     } // End of buildPartitionGraph
 
     def swapUpdate(swap_node_a:Node,
