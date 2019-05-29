@@ -1,5 +1,8 @@
 .vscode/
 .idea/
+.idea
 project/
 target/
-network.zip/
+network.zip
+out/
+out
