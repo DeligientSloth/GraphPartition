@@ -4,7 +4,6 @@ import util.Graph
 import util.Node
 import scala.util.Random
 import scala.util.control.Breaks._
-import org.apache.spark.rdd.RDD
 
 object KernighanLin{
 
@@ -32,40 +31,39 @@ object KernighanLin{
 
 
     //partition algorithm
-    private def randomPartition(graph:Graph, seed:Long): List[Array[Any]]={
+    private def randomPartition(graph:Graph, seed:Long): List[Array[String]]={
 
-        val node_idx = graph.edgeRDD.map(x=>x._1).distinct()
-        val count:Int = node_idx.count().toInt
+        val count:Int = graph.nodeIdxRDD.count().toInt
         val half_count:Int = count/2
 
         Random.setSeed(seed)
-        val shuffle_idx = Random.shuffle(node_idx.collect.toList).toArray
+        val shuffle_idx = Random.shuffle(graph.nodeIdxRDD.collect.toList).toArray
 
-        graph.vertex_partition=List()
-        graph.vertex_partition:+=shuffle_idx.take(half_count)
-        graph.vertex_partition:+=shuffle_idx.takeRight(count-half_count)
+        var vertex_partition:List[Array[String]]=List()
+        vertex_partition:+=shuffle_idx.take(half_count)
+        vertex_partition:+=shuffle_idx.takeRight(count-half_count)
 
-        graph.vertex_partition
+        vertex_partition
     }// End of randomPartition
 
     // Implement Kernighan-Lin Algorithm
     def partition(graph:Graph, seed:Long):Graph= {
 
         // Random partition for initialization
-        randomPartition(graph, seed)
+        val vertex_partition = randomPartition(graph, seed)
 
-        // Obtain the size of sub-graph. 
+        // Obtain the size of sub-graph.
         // If the graph node number is odd, then the second sub-graph has one more node than the first one.
-        val partitionSize = graph.vertex_partition(1).length
-        println("两个子图的大小分别为："+ graph.vertex_partition(0).length+" "+ graph.vertex_partition(1).length)
+        val partitionSize = vertex_partition(1).length
+        println("两个子图的大小分别为："+ vertex_partition(0).length+" "+ vertex_partition(1).length)
         println("最多需要交换："+partitionSize+"次")
 
-        partition(graph, graph.vertex_partition)
+        partition(graph, vertex_partition)
         graph
     }// End of KernighanLin
 
     // Random partition for initialization
-    def partition(graph:Graph, init_vertex_partition:List[Array[Any]]):Graph={
+    def partition(graph:Graph, init_vertex_partition:List[Array[String]]):Graph={
 
         if(init_vertex_partition.length>2){
             println("非法输入")
@@ -98,15 +96,9 @@ object KernighanLin{
 
         }//breakbale end
 
-
-        graph.vertex_partition = List()
-        graph.vertex_partition:+=graph.nodeRDD.filter(x=>
-            x.getPartition==0).map(x=>x.getIdx).collect()
-        graph.vertex_partition:+=graph.nodeRDD.filter(x=>
-            x.getPartition==1).map(x=>x.getIdx).collect()
-
         println("performance 变化")
         evalList.foreach(x=>print(x+" "))
+        println()
 
         graph
     }
@@ -131,10 +123,10 @@ object KernighanLin{
             node1.getIdx.toString < node2.getIdx.toString
 
         val node_gain = graph.nodeRDD.cartesian(graph.nodeRDD).filter(
-        x=>
-            distinct(x._1,x._2) &&
-            notInSameGraph(x._1, x._2) &&
-            unChosen(x._1, x._2)
+            x=>
+                distinct(x._1,x._2) &&
+                  notInSameGraph(x._1, x._2) &&
+                  unChosen(x._1, x._2)
         ).map(x=>{
             (x, x._1.swapGain(x._2))
         })

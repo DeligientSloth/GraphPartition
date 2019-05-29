@@ -2,24 +2,21 @@ package util
 
 import org.apache.spark.rdd.RDD
 
-class Graph(edge:RDD[(Any,Any,Double)]) extends Serializable {
+class Graph(edge:RDD[(String,String,Double)]) extends Serializable {
 
-    val edgeRDD = edge
+    val edgeRDD:RDD[(String,String,Double)] = edge
+    //directed and undirected
+    val nodeIdxRDD:RDD[String] = edgeRDD.map(x=>x._1).distinct().
+      union(edgeRDD.map(x=>x._2).distinct()).distinct()
+
     var nodeRDD:RDD[Node] = _
-    var map_idx_partition:Map[Any,Int] = _
-    var vertex_partition:List[Array[Any]] = List()
+    var map_idx_partition:Map[String,Int] = _
 
-    def this(edge:RDD[(Any,Any,Double)],
-            vertex_partition:List[Array[Any]])={
-        this(edge)
-        this.vertex_partition = vertex_partition
-        this.map_idx_partition = idx_to_partition(vertex_partition)
-        buildPartitionGraph(vertex_partition)
-    }
-    private def idx_to_partition(vertex_partition:List[Array[Any]]):Map[Any,Int]={
-        var lists:List[Array[(Any,Int)]] = List()
+
+    private def idx_to_partition(vertex_partition:List[Array[String]]):Map[String,Int]={
+        var lists:List[Array[(String,Int)]] = List()
         for(idx<-vertex_partition.indices)
-        lists :+= vertex_partition(idx).map(x=>(x,idx))
+            lists :+= vertex_partition(idx).map(x=>(x,idx))
         lists.flatten.toMap
     }
 
@@ -33,23 +30,23 @@ class Graph(edge:RDD[(Any,Any,Double)]) extends Serializable {
           *    思路是filter出那些在子图里面的点的集合，map一下只保留权重，进而sum
           * 4、可以通过map，生成每一个点的类，partition表示这个点在第一个graph与否
           * */
-        val createCombiner =(x:(Any,Any,Double))=>{
+        val createCombiner =(x:(String,String,Double))=>{
             (
               List((x._2,x._3)),
               if(map_idx_partition(x._1)!=map_idx_partition(x._2)) x._3 else 0,
               if(map_idx_partition(x._1)==map_idx_partition(x._2)) x._3 else 0
             )
         }
-        val mergeValue = (combineValue:(List[(Any,Double)],Double,Double),
-                          x:(Any,Any,Double))=>{
+        val mergeValue = (combineValue:(List[(String,Double)],Double,Double),
+                          x:(String,String,Double))=>{
             (
               combineValue._1:+(x._2,x._3),
               combineValue._2+(if(map_idx_partition(x._1)!=map_idx_partition(x._2)) x._3 else 0),
               combineValue._3+(if(map_idx_partition(x._1)==map_idx_partition(x._2)) x._3 else 0)
             )
         }//end method
-        val mergeCombiner = (combineValue1:(List[(Any,Double)],Double,Double),
-                             combineValue2:(List[(Any,Double)],Double,Double))=>{
+        val mergeCombiner = (combineValue1:(List[(String,Double)],Double,Double),
+                             combineValue2:(List[(String,Double)],Double,Double))=>{
             (
               combineValue1._1:::combineValue2._1,
               combineValue1._2+combineValue2._2,
@@ -66,23 +63,22 @@ class Graph(edge:RDD[(Any,Any,Double)]) extends Serializable {
         ).map(
             x=>new Node(x._1,x._2,x._3,x._4,map_idx_partition(x._1),false)
         )
-        return this
+        this
     }
 
     def buildPartitionGraph(assignment: RDD[(String,Int)]):Graph={
+
         this.map_idx_partition = assignment.collect().toMap
         buildPartitionGraph()
     }
-    def buildPartitionGraph(vertex_partition:List[Array[Any]]):Graph={
+    def buildPartitionGraph(vertex_partition:List[Array[String]]):Graph={
 
-        this.vertex_partition = vertex_partition
         this.map_idx_partition = idx_to_partition(vertex_partition)
-
         buildPartitionGraph()
     } // End of buildPartitionGraph
 
     def swapUpdate(swap_node_a:Node,
-                    swap_node_b:Node):Graph={
+                   swap_node_b:Node):Graph={
         //入口参数检查
         if(swap_node_a==null||swap_node_b==null){
             println("Input node is null. ")
@@ -108,37 +104,21 @@ class Graph(edge:RDD[(Any,Any,Double)]) extends Serializable {
     def graphPartitionEvaluation: Double={
         //计算图内聚和图外连
         /**
-         * 把点map为E和，计算E和I的总和，
-        * 然后累计起来，因为每个点都有两次相连，所以除以2*/
+          * 把点map为E和，计算E和I的总和，
+          * 然后累计起来，因为每个点都有两次相连，所以除以2*/
         val inner_external_Weight = this.nodeRDD.map(
-        x=>(x.getI, x.getE)).reduce(
+            x=>(x.getI, x.getE)).reduce(
             (x,y)=>(x._1+y._1,x._2+y._2)
         )
 
-    //    0.5*(inner_external_Weight._1-inner_external_Weight._2)
-        inner_external_Weight._1/inner_external_Weight._2
+        //    0.5*(inner_external_Weight._1-inner_external_Weight._2)
+        return inner_external_Weight._1/inner_external_Weight._2
     } // end of graphPartitionEvaluation
 
     def Print()={
-
-        if(this.edgeRDD!=null){
-            println("=====Edge Set============")
-            this.edgeRDD.foreach(println)
-        }
-
-        if(this.nodeRDD!=null){
-            println("=====Node Set============")
-            this.nodeRDD.foreach(x=>x.Print())
-        }
-
-        if(this.vertex_partition!=null){
-            println("=====Each Partition============")
-            for (idx <- vertex_partition.indices) {
-                printf("===========第%d个子图是============", idx)
-                vertex_partition(idx).foreach(x=>print(x+" "))
-                println()
-            }
-        }
+        nodeRDD.map(
+            x=>(x.getPartition,x.getIdx)
+        ).groupByKey().map(x=>(x._1,x._2.toList)).foreach(println)
     } // End of Print
 
 }
