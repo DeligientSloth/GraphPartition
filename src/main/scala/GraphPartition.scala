@@ -46,7 +46,7 @@ object GraphPartition {
 
     val startTime = new Date().getTime
     // seed=324,12324,2324
-    KernighanLin.partition(graph, 324,false)//运行算法
+    graph = KernighanLin.partition(graph, 324,false)//运行算法
     //graph = SpectralClustering.partition(graph,2,40)
 //    graph = HashGraphPartition.partition(graph,2)
     val endTime = new Date().getTime

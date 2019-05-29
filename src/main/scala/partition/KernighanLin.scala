@@ -61,7 +61,6 @@ object KernighanLin{
         println("最多需要交换："+partitionSize+"次")
 
         partition(graph, vertex_partition,needMaxGain:Boolean)
-        graph
     }// End of KernighanLin
 
     // Random partition for initialization
@@ -80,26 +79,30 @@ object KernighanLin{
 
         // Rebuild graph data according to initial partition.
         graph.buildPartitionGraph(init_vertex_partition)
-
+//        println("图的初始化划分为")
+//        graph.Print()
         //calculate example
         var chosenNum = 0
-        var gain_max = 0.0
         var count:Int = 0
         var evalList:List[Double] = List()
-        println("开始进入KL")
+
         breakable{
             do{
-                gain_max = iteration(graph,needMaxGain)
+
+                val swapItem = iteration(graph,needMaxGain)
+                if(swapItem==null) break()
+                else graph.swapUpdate(swapItem._1,swapItem._2)
 
                 count+=1
                 chosenNum+=1
 
-                println(chosenNum,gain_max)
-                if(gain_max<=0) break()
+//                println(swapItem._1.getIdx,swapItem._2.getIdx)
+//                graph.Print()
+                println(graph.graphPartitionEvaluation)
 
                 evalList:+=graph.graphPartitionEvaluation
 
-            }while(chosenNum < partitionSize && gain_max > 0)//所有的点都选完或者最大增益小于0
+            }while(true)//所有的点都选完或者最大增益小于0
 
         }//breakbale end
 
@@ -109,20 +112,10 @@ object KernighanLin{
 
         graph
     }
-    //不在一个子图里面
-    def notInSameGraph(node1:Node, node2:Node):Boolean =
-        node1.getPartition != node2.getPartition
-
-    //无向图去重
-    def distinct(node1:Node, node2:Node):Boolean =
-        node1.getIdx.toString < node2.getIdx.toString
-
 
     def getMaxGain(nodeUnChosen:RDD[Node]): (Node,Node,Double) ={
         val node_gain = nodeUnChosen.cartesian(nodeUnChosen).filter(
-            x=>
-                distinct(x._1,x._2) &&
-                  notInSameGraph(x._1, x._2)
+            x=>x._1.getPartition!=x._2.getPartition
         ).map(x=>{
             (x._1,x._2,x._1.swapGain(x._2))
         }).filter(_._3>0)
@@ -133,26 +126,14 @@ object KernighanLin{
         })
     }
     // Iteration
-    def iteration(graph: Graph, needMaxGain:Boolean): Double={
+    def iteration(graph: Graph, needMaxGain:Boolean): (Node,Node,Double)={
 
-        var swap_node_a: Node = null
-        var swap_node_b: Node = null
         var maxGain:Double = 0.0
 
         val nodeUnChosen = graph.nodeRDD.filter(!_.getChosen)
 
-        if(needMaxGain){
-
-            val maxItem = getMaxGain(nodeUnChosen)
-
-            if(maxItem==null) return -1000.0
-            swap_node_a = maxItem._1
-            swap_node_b = maxItem._2
-            maxGain = maxItem._3
-            swapUpdate(graph, swap_node_a, swap_node_b)
-
-            maxGain
-        }
+        if(needMaxGain)
+            getMaxGain(nodeUnChosen)
         else{
             val graph0 = nodeUnChosen.filter(_.getPartition==0).collect()
             val graph1 = nodeUnChosen.filter(_.getPartition==1).collect()
@@ -160,12 +141,10 @@ object KernighanLin{
             for(node0<-graph0;node1<-graph1){
                 maxGain = node0.swapGain(node1)
                 if(maxGain>0) {
-                    swapUpdate(graph, node0, node1)
-                    return maxGain
+                    return (node0,node1,maxGain)
                 }
             }
-            if(maxGain<=0) return -1000.0
-            0
+            null
         }
 
     }
