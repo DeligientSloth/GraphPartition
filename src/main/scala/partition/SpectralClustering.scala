@@ -7,7 +7,7 @@ object SpectralClustering {
   def gaussianSimilarity(dist:Double,sigma:Double): Double =
     math.exp(-dist/(2*sigma*sigma))
 
-  def partition(graph: Graph,partitions:Int,maxIter:Int): Graph ={
+  def partition(graph: Graph, partitions:Int, maxIter:Int): Graph ={
 
     val simEdge = graph.edgeRDD.map(
       x=>(x._1.toString.toLong,

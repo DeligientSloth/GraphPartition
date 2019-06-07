@@ -21,17 +21,24 @@ object GraphPartition {
 
     val fileType:String = filePath.split('.')(1)
 
-    val rdd = fileType match{
-      case "txt"=>sparkSession.sparkContext.textFile(filePath).map(_.split(" "))
-      case "csv"=>sparkSession.read.csv(filePath).rdd.map(x=>x.toSeq.toArray)
-      case _ => sparkSession.read.csv(filePath).rdd.map(x=>x.toSeq.toArray)
-    }
+    // val rdd = fileType match{
+    //   case "txt"=>sparkSession.sparkContext.textFile(filePath).map(_.split(" "))
+    //   case "csv"=>sparkSession.read.csv(filePath).rdd.map(x=>x.toSeq.toArray)
+    //   case _ => sparkSession.read.csv(filePath).rdd.map(x=>x.toSeq.toArray)
+    // }
 
-    val edgeRDD = rdd.map(x=> {
-        if(x.length==2) (x(0).toString, x(1).toString, 1.0)
-        else (x(0).toString, x(1).toString, x(2).toString.toDouble)
-      }
-    )
+
+    val rdd = sparkSession.sparkContext.textFile(filePath).map(_.split(" "))
+
+    // rdd.foreach(x=>println(x(0), x(1)))
+
+    val edgeRDD = rdd.map(x=> (x(0).toString, x(1).toString, 1.0))
+
+    // val edgeRDD = rdd.map(x=> {
+        // if(x.length==2) (x(0).toString, x(1).toString, 1.0)
+        // else (x(0).toString, x(1).toString, x(2).toString.toDouble)
+    //   }
+    // )
 
     if(isDirected) edgeRDD
     else edgeRDD.union(edgeRDD.map(x=>(x._2, x._1, x._3)))
