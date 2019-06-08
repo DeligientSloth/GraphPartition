@@ -4,10 +4,11 @@ import org.apache.spark.rdd.RDD
 
 class Graph(edge: RDD[(String, String, Double)]) extends Serializable {
 
-    val edgeRDD: RDD[(String, String, Double)] = edge
+    var edgeRDD: RDD[(String, String, Double, Boolean)] = edge.map(x=>(x._1,x._2,x._3,false))
     //directed and undirected
     val nodeIdxRDD: RDD[String] = edgeRDD.map(x => x._1).distinct().
             union(edgeRDD.map(x => x._2).distinct()).distinct()
+    var nodeNum:Long = nodeIdxRDD.count()
 
     var nodeRDD: RDD[Node] = _
     var map_idx_partition: Map[String, Int] = _
@@ -18,7 +19,13 @@ class Graph(edge: RDD[(String, String, Double)]) extends Serializable {
             lists :+= vertex_partition(idx).map(x => (x, idx))
         lists.flatten.toMap
     }
-
+    def buildGraph():Graph={
+        nodeRDD = edgeRDD.map(
+            x=>(x._1,x._2,x._3)).map(x => (x._1, (x._2,x._3))).
+                groupByKey().map(x=>(x._1,x._2.toList)).
+                map(x=>new Node(x._1,x._2,0.0,0.0,0,false,false,1.0))
+        this
+    }
     private def buildPartitionGraph(): Graph = {
         /**
           * 1、首先组织一下数据，原来是两两连接的点，现在是(点:key, tuple(点，weight):value)
@@ -53,14 +60,15 @@ class Graph(edge: RDD[(String, String, Double)]) extends Serializable {
             )
         } //end method
 
-        this.nodeRDD = edgeRDD.map(x => (x._1, x)).combineByKey(
+        this.nodeRDD = edgeRDD.map(
+            x=>(x._1,x._2,x._3)).map(x => (x._1, x)).combineByKey(
             createCombiner,
             mergeValue, //end method
             mergeCombiner //end method
         ).map(
             x => (x._1, x._2._1, x._2._2, x._2._3)
         ).map(
-            x => new Node(x._1, x._2, x._3, x._4, map_idx_partition(x._1), false)
+            x => new Node(x._1, x._2, x._3, x._4, map_idx_partition(x._1), false,false,1.0)
         )
         this
     }
@@ -116,9 +124,10 @@ class Graph(edge: RDD[(String, String, Double)]) extends Serializable {
     } // end of graphPartitionEvaluation
 
     def Print() = {
-        nodeRDD.map(
-            x => (x.getPartition, x.getIdx)
-        ).groupByKey().map(x => (x._1, x._2.toList)).foreach(println)
+        nodeRDD.foreach(x=>x.Print())
+//        nodeRDD.map(
+//            x => (x.getPartition, x.getIdx)
+//        ).groupByKey().map(x => (x._1, x._2.toList)).foreach(println)
     } // End of Print
 
 }
