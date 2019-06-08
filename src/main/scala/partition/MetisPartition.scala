@@ -124,9 +124,9 @@ class MetisPartition{
                 else x
         ).distinct()
 
-//        neighbourEdgeMap.foreach(println)
-//        graph.edgeRDD.foreach(println)
-//        println(node1.getIdx,node2.getIdx)
+        neighbourEdgeMap.foreach(println)
+        graph.edgeRDD.foreach(println)
+        println(node1.getIdx,node2.getIdx)
         graph.nodeNum-=1//combine two node
         graph
     }
