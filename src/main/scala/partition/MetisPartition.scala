@@ -6,7 +6,7 @@ import util.Graph
 import util.Node
 import scala.util.Random
 import scala.util.control.Breaks._
-
+//import scala.collection.mutable.Map
 
 class MetisPartition{
 
@@ -28,11 +28,11 @@ class MetisPartition{
         * @output: coarsen graph G_c
         *
         * */
-
+        graph.edgeRDD.foreach(println)
         var coarsenedGraph = graph
 
         while(coarsenedGraph.nodeNum > c*k){
-            coarsenedGraph = MaxMatching(coarsenedGraph)
+            coarsenedGraph = maxMatching(coarsenedGraph)
         }
 
         coarsenedGraph
@@ -49,63 +49,84 @@ class MetisPartition{
     private def uncoarsen(graph: Graph): Graph={
         graph
     }
+
+    def unionNeighbour(node1:Node,node2:Node): Map[String,Double] = {
+
+        val unionNeighbour = node1.popNeighbour(node2).getNeighbour++
+                node2.popNeighbour(node1).getNeighbour
+        // shared neighbour
+        val intersetNeighbour = node1.getNeighbour.keySet & node2.getNeighbour.keySet
+        //shared neighbour weight sum
+        val neighbour = unionNeighbour.map(x=>
+            if(intersetNeighbour.contains(x._1))
+                (x._1,node1.edgeWeight(x._1) + node2.edgeWeight(x._1))
+            else x)
+        neighbour
+    }
+    private def unionNode(node1:Node,node2:Node):Node={
+        val node = new Node(node1.getIdx,unionNeighbour(node1,node2))
+        node.setComposition(List(node1,node2))
+        node.setIsMark(true)
+        node.setWeight(node1.getWeight+node2.getWeight)
+        node
+    }
     private def update(graph: Graph,node1:Node,node2:Node):Graph={
         //get neighbour node->weight map
         // filter connection between two nodes
-        val neighbourMap1:Map[String,Double] = node1.getNeighbour.filter(_._1!=node2.getIdx).toMap
-        val neighbourMap2:Map[String,Double] = node2.getNeighbour.filter(_._1!=node1.getIdx).toMap
-        //union two neighbours, for those both neighbours share together, weight sum
-        val neighbourMap:Map[String,Double] = (neighbourMap1++neighbourMap2).map(x=>
-            if(neighbourMap1.contains(x._1)&&neighbourMap2.contains(x._1))
-                (x._1, neighbourMap1(x._1)+neighbourMap2(x._1))
-            else (x._1, x._2)
-        )
+        val newNode = unionNode(node1,node2)//union neighbour,composition
 
         //convert to edge map
-        val neighbourEdgeMap:Map[(String,String),Double] =
-            neighbourMap.map(x=>((node1.getIdx,x._1),x._2))
+        var neighbourEdgeMap:Map[(String,String),Double] =
+            newNode.getNeighbour.map(x=>((newNode.getIdx,x._1),x._2))
+
+
         // update node rdd
         graph.nodeRDD = graph.nodeRDD.filter(
             //just filter node2
             _.getIdx!=node2.getIdx
         ).map(x=>
-            if(x.getIdx==node1.getIdx)
-                //if node1,set neighbour map,let fusion
-                x.setNeighbour(neighbourMap.toList).
-                        addComposition(node2).
-                        setIsMark(true).
-                        setWeight(node1.getWeight+node2.getWeight)
+            if(x.getIdx==node1.getIdx) newNode
+            else{
 
-            //those nodes belongs to node1 or node2's neighbour
-            else if(neighbourMap1.contains(x.getIdx)&&neighbourMap2.contains(x.getIdx))
-            //remove node1 and node2,append new node
-                x.removeNeighbour(node1.getIdx).removeNeighbour(node2.getIdx).
-                        appendNeighbour((node1.getIdx, neighbourMap(x.getIdx)))
+                val weight = x.edgeWeight(node1)+x.edgeWeight(node2)
 
-            else if(neighbourMap1.contains(x.getIdx))
-            //remove node1, append new node
-                x.removeNeighbour(node1.getIdx).
-                        appendNeighbour((node1.getIdx, neighbourMap(x.getIdx)))
+                if(weight!=0) neighbourEdgeMap += (x.getIdx,newNode.getIdx)->weight
 
-            else if(neighbourMap2.contains(x.getIdx))
-            //remove node2, append new node
-                x.removeNeighbour(node2.getIdx).
-                        appendNeighbour((node1.getIdx, neighbourMap(x.getIdx)))
-            else x
+                x.popNeighbour(node1).popNeighbour(node2).
+                        pushNeighbour((newNode.getIdx,weight))
+            }
         )
-        graph.nodeRDD.foreach(x=>x.Print())
-        graph.edgeRDD = graph.edgeRDD.filter(
-            //node 2 doesn't exist
-            x=>x._1!=node2.getIdx&&x._2!=node2.getIdx
-        ).map(x=>
-            if(neighbourEdgeMap.contains((x._1,x._2)))
-                (x._1,x._2,neighbourEdgeMap((x._1,x._2)),true)
-            else if(neighbourEdgeMap.contains((x._2,x._1)))
-                (x._1,x._2,neighbourEdgeMap((x._2,x._1)),true)
-            else x)
-        neighbourEdgeMap.foreach(println)
-        graph.edgeRDD.foreach(println)
-        println(node1.getIdx,node2.getIdx)
+
+//        graph.nodeRDD.foreach(x=>x.Print())
+
+        //update edge rdd
+        //filter node1<->node2
+        graph.edgeRDD = graph.edgeRDD.filter
+        //node 2 doesn't exist
+            { x =>
+                !((x._1 == node1.getIdx && x._2 == node2.getIdx) ||
+                        (x._1 == node2.getIdx) && (x._2 == node1.getIdx))
+            }
+
+
+        graph.edgeRDD=graph.edgeRDD.map(
+            x=>
+                    //which node are node1,node2
+                if(x._1==node1.getIdx||x._1==node2.getIdx)
+                    (newNode.getIdx,x._2,x._3,true)
+                else if(x._2==node1.getIdx||x._2==node2.getIdx)
+                    (x._1,newNode.getIdx,x._3,true)
+                else x
+        ).map(
+            x=>
+                if(neighbourEdgeMap.contains((x._1,x._2)))
+                    (x._1,x._2,neighbourEdgeMap((x._1,x._2)),true)
+                else x
+        ).distinct()
+
+//        neighbourEdgeMap.foreach(println)
+//        graph.edgeRDD.foreach(println)
+//        println(node1.getIdx,node2.getIdx)
         graph.nodeNum-=1//combine two node
         graph
     }
@@ -129,7 +150,7 @@ class MetisPartition{
     // Maximal Matching Algorithm
 
     // Heavy-edge matching (HEM)
-    def MaxMatching(graph: Graph): Graph={
+    def maxMatching(graph: Graph): Graph={
 
         // Step 1: Visit the vertices of the graph in random order.
 

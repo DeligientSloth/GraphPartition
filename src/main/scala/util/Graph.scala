@@ -22,7 +22,7 @@ class Graph(edge: RDD[(String, String, Double)]) extends Serializable {
     def buildGraph():Graph={
         nodeRDD = edgeRDD.map(
             x=>(x._1,x._2,x._3)).map(x => (x._1, (x._2,x._3))).
-                groupByKey().map(x=>(x._1,x._2.toList)).
+                groupByKey().map(x=>(x._1,x._2.toMap)).
                 map(x=>new Node(x._1,x._2,0.0,0.0,0,false,false,1.0))
         this
     }
@@ -68,7 +68,7 @@ class Graph(edge: RDD[(String, String, Double)]) extends Serializable {
         ).map(
             x => (x._1, x._2._1, x._2._2, x._2._3)
         ).map(
-            x => new Node(x._1, x._2, x._3, x._4, map_idx_partition(x._1), false,false,1.0)
+            x => new Node(x._1, x._2.toMap, x._3, x._4, map_idx_partition(x._1), false,false,1.0)
         )
         this
     }

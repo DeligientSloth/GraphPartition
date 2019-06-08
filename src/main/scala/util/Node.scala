@@ -1,19 +1,21 @@
 package util
 
+//import scala.collection.mutable.Map
+
 class Node(__idx: String,
-           __neighbour: List[(String, Double)]) extends Serializable {
+           __neighbour: Map[String,Double]) extends Serializable {
 
     private val idx: String = __idx
-    private var neighbour: List[(String, Double)] = __neighbour
+    private var neighbour: Map[String,Double] = __neighbour
     private var E: Double = 0.0
     private var I: Double = 0.0
     private var partition: Int = 0 //表示这个点在第几个图里面，从0开始
     private var chosen: Boolean = false
-    private var composition: List[String] = List(idx)//表示组成只有自己
+    private var composition: List[Node] = List()//表示组成只有自己
     private var isMark:Boolean = false
     private var weight:Double = 1.0
 
-    def this(idx: String, neighbour: List[(String, Double)],
+    def this(idx: String, neighbour: Map[String,Double],
              E: Double, I: Double = 0,
              partition: Int = 0,
              chosen: Boolean = false,
@@ -24,7 +26,6 @@ class Node(__idx: String,
         this.I = I
         this.partition = partition
         this.chosen = chosen
-//        this.composition=List(idx)
         this.isMark=isMark
         this.weight=weight
     }
@@ -39,18 +40,32 @@ class Node(__idx: String,
         this
     }
 
-    def setNeighbour(neighbour:List[(String,Double)]): Node = {
+    def setNeighbour(neighbour:Map[String,Double]): Node = {
         this.neighbour = neighbour
         this
     }
 
-    def removeNeighbour(dropIdx: String): Node = {
-        this.neighbour = this.neighbour.filter(_._1!=dropIdx)
+    def popNeighbour(popNode: Node): Node = {
+        this.neighbour-=popNode.getIdx
         this
     }
 
-    def appendNeighbour(neighbourNode:(String,Double)): Node = {
-        this.neighbour:+=neighbourNode
+//    def unionNeighbour(node1:Node,node2:Node): Node = {
+//
+//        val unionNeighbour = node1.popNeighbour(node2).getNeighbour++
+//                node2.popNeighbour(node1).getNeighbour
+//        // shared neighbour
+//        val intersetNeighbour = node1.getNeighbour.keySet & otherNode.getNeighbour.keySet
+//        //shared neighbour weight sum
+//        this.neighbour = unionNeighbour.map(x=>
+//            if(intersetNeighbour.contains(x._1))
+//                (x._1,this.edgeWeight(x._1) + otherNode.edgeWeight(x._1))
+//            else x)
+//        this
+//    }
+
+    def pushNeighbour(neighbourNode:(String,Double)): Node = {
+        this.neighbour+=neighbourNode
         this
     }
 
@@ -69,12 +84,14 @@ class Node(__idx: String,
         this
     }
 
-    def addComposition(otherNode:Node): Node = {
-        this.composition = List.concat(this.composition,otherNode.getComposition)
-        this
-    }
+//    def addComposition(otherNode:Node): Node = {
+//        this.composition:+=this
+//        this.composition:+=otherNode
+//        this
+//    }
 
-    def setComposition(composition:List[String]): Node = {
+
+    def setComposition(composition:List[Node]): Node = {
         this.composition = composition
         this
     }
@@ -84,9 +101,18 @@ class Node(__idx: String,
         this
     }
 
+//    def unionNode(node1:Node,node2:Node): Node={
+//
+//        unionNeighbour(otherNode)
+//        addComposition(otherNode)
+//        this.isMark=true
+//        this.weight+=otherNode.weight
+//        this
+//    }
+
     def getIdx: String = this.idx
 
-    def getNeighbour: List[(String, Double)] = this.neighbour
+    def getNeighbour: Map[String,Double] = this.neighbour
 
     def getE: Double = this.E
 
@@ -98,25 +124,32 @@ class Node(__idx: String,
 
     def getIsMark: Boolean = this.isMark
 
-    def getComposition: List[String] = this.composition
+    def getComposition: List[Node] = this.composition
 
     def getWeight: Double = this.weight
 
-    def weight(otherNode: Node): Double = {
-        val weight = this.getNeighbour.filter(x => x._1 == otherNode.getIdx)
-        if (weight.isEmpty) return 0.0
-        weight.head._2
+    def isNeighbour(otherNode:Node):Boolean= {
+        this.neighbour.contains(otherNode.getIdx)
+    }
+
+    def edgeWeight(otherNode: Node): Double = {
+        if (!isNeighbour(otherNode)) return 0.0
+        this.neighbour(otherNode.getIdx)
+    }
+    def edgeWeight(otherNodeIdx: String): Double = {
+        if(!this.neighbour.contains(otherNodeIdx)) return 0.0
+        this.neighbour(otherNodeIdx)
     }
 
     def swapGain(otherNode: Node): Double =
         this.getE - this.getI + otherNode.getE -
-                otherNode.getI - 2 * this.weight(otherNode)
+                otherNode.getI - 2 * this.edgeWeight(otherNode)
 
     def Print(): Unit = {
         println("=================================")
         this.neighbour.foreach(x=>print(x+" "))
         println()
-        this.composition.foreach(x=>print(x+" "))
+        this.composition.foreach(x=>print(x.getIdx+" "))
         println()
         println(this.idx + " E=" + this.E + " I=" + this.I
                 + " partition=" + this.partition + " is chosen=" + this.chosen+
@@ -140,7 +173,7 @@ class Node(__idx: String,
         val E_b = swap_node_b.getE
         val I_b = swap_node_b.getI
 
-        val weight_ab = swap_node_a.weight(swap_node_b)
+        val weight_ab = swap_node_a.edgeWeight(swap_node_b)
 
         def inversePartition(node: Node): Int =
             if (node.getPartition == 1) 0 else 1
@@ -152,8 +185,8 @@ class Node(__idx: String,
             return this.setE(I_b + weight_ab).setI(E_b - weight_ab).
                     setChosen(true).setPartition(inversePartition(this))
 
-        val weight_a = this.weight(swap_node_a)
-        val weight_b = this.weight(swap_node_b)
+        val weight_a = this.edgeWeight(swap_node_a)
+        val weight_b = this.edgeWeight(swap_node_b)
 
         if (weight_a == 0.0 && weight_b == 0.0) return this
 

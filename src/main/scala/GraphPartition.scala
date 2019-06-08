@@ -89,7 +89,7 @@ object GraphPartition {
 //        graph = MetisPartition.MaxMatching(graph)
 //        val startTime = new Date().getTime
 //        // seed=324,12324,2324
-//        graph = KernighanLin.partition(graph, 324, false) //运行算法
+//        graph = KernighanLin.partition(graph, 324, true) //运行算法
 //        //graph = SpectralClustering.partition(graph,2,40)
 //        //    graph = HashGraphPartition.partition(graph,2)
 //        val endTime = new Date().getTime
@@ -100,6 +100,9 @@ object GraphPartition {
 //        println("划分得到的子图")
         graph.Print()
         graph.edgeRDD.foreach(println)
+
+        println(graph.nodeRDD.count())
+        println(graph.nodeNum)
     }
 
 }
