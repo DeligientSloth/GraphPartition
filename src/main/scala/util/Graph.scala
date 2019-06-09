@@ -32,6 +32,10 @@ class Graph extends Serializable {
         this
     }
 
+    def assignPartitionToComposition():Graph={
+        this.nodeRDD.map(_.setCompositionPartition())
+        this
+    }
     def buildPartitionGraph(assignment: RDD[(String, Int)]):Graph={
 
         if(this.nodeRDD==null) buildGraph()
@@ -57,7 +61,7 @@ class Graph extends Serializable {
                 x.setE(E).setI(I)
             }
         )
-        this
+        assignPartitionToComposition()
     }
     private def buildPartitionGraph(map_idx_partition:Map[String,Int]): Graph = {
         /**
@@ -103,6 +107,7 @@ class Graph extends Serializable {
         ).map(
             x => new Node(x._1, x._2.toMap, x._3, x._4, map_idx_partition(x._1), false,false,1.0)
         )
+        assignPartitionToComposition()
         this
     }
 

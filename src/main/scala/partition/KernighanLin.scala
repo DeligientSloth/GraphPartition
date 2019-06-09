@@ -62,24 +62,7 @@ object KernighanLin {
         partition(graph, vertex_partition, needMaxGain: Boolean)
     } // End of KernighanLin
 
-    // Random partition for initialization
-    def partition(graph: Graph,
-                  init_vertex_partition: List[Array[String]],
-                  needMaxGain: Boolean): Graph = {
-
-        if (init_vertex_partition.length > 2) {
-            println("非法输入")
-            return null
-        }
-
-        val size1 = init_vertex_partition(0).length
-        val size2 = init_vertex_partition(1).length
-        val partitionSize = if (size1 >= size2) size1 else size2
-
-        // Rebuild graph data according to initial partition.
-        graph.buildPartitionGraph(init_vertex_partition)
-        //        println("图的初始化划分为")
-        //        graph.Print()
+    def swapLoop(graph: Graph,needMaxGain:Boolean):Graph={
         //calculate example
         var chosenNum = 0
         var count: Int = 0
@@ -95,10 +78,6 @@ object KernighanLin {
                 count += 1
                 chosenNum += 1
 
-                //                println(swapItem._1.getIdx,swapItem._2.getIdx)
-                //                graph.Print()
-                println(graph.graphPartitionEvaluation)
-
                 evalList :+= graph.graphPartitionEvaluation
 
             } while (true) //所有的点都选完或者最大增益小于0
@@ -110,6 +89,24 @@ object KernighanLin {
         println()
 
         graph
+    }
+    def partition(graph: Graph,
+                  assigenment:RDD[(String,Int)],
+                  needMaxGain: Boolean):Graph={
+
+        graph.buildPartitionGraph(assigenment)
+
+        swapLoop(graph,needMaxGain)
+    }
+    // Random partition for initialization
+    def partition(graph: Graph,
+                  init_vertex_partition: List[Array[String]],
+                  needMaxGain: Boolean): Graph = {
+
+        // Rebuild graph data according to initial partition.
+        graph.buildPartitionGraph(init_vertex_partition)
+
+        swapLoop(graph,needMaxGain)
     }
 
     def getMaxGain(nodeUnChosen: RDD[Node]): (Node, Node, Double) = {

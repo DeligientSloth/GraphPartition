@@ -79,6 +79,11 @@ class Node(__idx: String,
         this
     }
 
+    def setCompositionPartition(): Node = {
+        this.composition.map(_.setPartition(this.partition))
+        this
+    }
+
     def setIsMark(isMark: Boolean): Node = {
         this.isMark = isMark
         this
@@ -149,7 +154,7 @@ class Node(__idx: String,
         println("=================================")
         this.neighbour.foreach(x=>print(x+" "))
         println()
-        this.composition.foreach(x=>print(x.getIdx+" "))
+        this.composition.foreach(x=>print(x.getIdx+"-"+x.getPartition+" "))
         println()
         println(this.idx + " E=" + this.E + " I=" + this.I
                 + " partition=" + this.partition + " is chosen=" + this.chosen+
