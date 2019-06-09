@@ -17,7 +17,6 @@ class MetisPartition{
         this.k = k
     }
 
-    def getK():Int = this.k
     // Three Main Phases
 
     // Step 1: Coarsening Phase
@@ -26,28 +25,58 @@ class MetisPartition{
         * @input:  origin graph G_o
         *          coarsening parameter c
         * @output: coarsen graph G_c
-        *
         * */
         graph.edgeRDD.foreach(println)
         var coarsenedGraph = graph
-
         while(coarsenedGraph.nodeNum > c*k){
             coarsenedGraph = maxMatching(coarsenedGraph)
         }
-
         coarsenedGraph
     }
 
     // Step 2: Partitioning Phase
-    private def initialPartition(graph: Graph): Graph={
+    private def initialPartition(graph: Graph, k: Int): Graph={
         // Use Spectral Clustering
         var splitGraph = graph
+
+        splitGraph = SpectralClustering.partition(graph, k, 40)
 
         splitGraph
     }
 
-    private def uncoarsen(graph: Graph): Graph={
-        graph
+    private def uncoarsen(graph: Graph, k: Int): Graph={
+
+        var refinedGraph = graph
+        // 顶点可能从一个分区移动到其他许多分区中，甚至移动到其它k-1个分区中
+        // 使用k(k-1)个优先队列，每一个对应一种移动
+
+        // 算法每一步找到在这k(k-1)队列中具有最高获益的移动，
+        // 移动能够保持或者改进均衡的具有最高获益的顶点。
+
+        // 移动后，全部的k(k-1)个队列都更新数据。
+
+        // While current refined Graph has coarsen nodes
+        while(refinedGraph.nodeRDD.filter(x=>x.getWeight>1).count()>0){
+
+            // Step 1: Partitioning
+            val nodePartitionList = refinedGraph.nodeRDD.
+                groupBy(x => x.getPartition).
+                map(x => x._2.
+                    map(x => x.getIdx).toArray).collect().toList
+            refinedGraph = KernighanLin.partition(refinedGraph,
+                nodePartitionList,
+                needMaxGain = true)
+
+            // Step 2: Refining nodes
+            refinedGraph.nodeRDD.filter(x=>x.getWeight>1).
+                flatMap(x=>x.getComposition)
+
+
+            // Step 3: Rebuild weight and edge connection.
+//            refinedGraph.edgeRDD.filter(x=>{ x. })  todo
+
+        }
+        refinedGraph
     }
 
     def unionNeighbour(node1:Node,node2:Node): Map[String,Double] = {
@@ -150,6 +179,9 @@ class MetisPartition{
     // Maximal Matching Algorithm
 
     // Heavy-edge matching (HEM)
+
+    private def heavyEdgeMatching(graph: Graph): Graph={graph}
+
     def maxMatching(graph: Graph): Graph={
 
         // Step 1: Visit the vertices of the graph in random order.
@@ -174,7 +206,16 @@ class MetisPartition{
     }
 
     def partition(graph: Graph, k:Int): Graph={
-        this.k = k
+        var partitionedGraph = graph
+        // 1.coarsening phase
+        partitionedGraph = coarsen(graph, 15)
+
+        // 2.partitioning phase
+        partitionedGraph = initialPartition(partitionedGraph, k)
+
+        // 3.un-coarsening phase
+        partitionedGraph = uncoarsen(graph, k)
+
         graph
     }
 
