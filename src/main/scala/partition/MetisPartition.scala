@@ -44,7 +44,7 @@ class MetisPartition{
         splitGraph
     }
 
-    private def uncoarsen(graph: Graph, k: Int): Graph={
+    private def uncoarsen(graph: Graph): Graph={
 
         var refinedGraph = graph
         // 顶点可能从一个分区移动到其他许多分区中，甚至移动到其它k-1个分区中
@@ -56,26 +56,29 @@ class MetisPartition{
         // 移动后，全部的k(k-1)个队列都更新数据。
 
         // While current refined Graph has coarsen nodes
-        while(refinedGraph.nodeRDD.filter(x=>x.getWeight>1).count()>0){
-
-            // Step 1: Partitioning
-            val nodePartitionList = refinedGraph.nodeRDD.
-                groupBy(x => x.getPartition).
-                map(x => x._2.
-                    map(x => x.getIdx).toArray).collect().toList
-            refinedGraph = KernighanLin.partition(refinedGraph,
-                nodePartitionList,
-                needMaxGain = true)
-
-            // Step 2: Refining nodes
-            refinedGraph.nodeRDD.filter(x=>x.getWeight>1).
-                flatMap(x=>x.getComposition)
+        breakable{
+            while(true){
 
 
-            // Step 3: Rebuild weight and edge connection.
-//            refinedGraph.edgeRDD.filter(x=>{ x. })  todo
+                // Step 2: Refining nodes
+                var refinedNodeRDD = refinedGraph.nodeRDD.filter(x=>x.getWeight>1)
 
+                if(refinedNodeRDD.isEmpty()) break()
+
+                val nodeRDD = refinedGraph.nodeRDD.filter(x=>x.getWeight==1)
+                refinedNodeRDD = refinedNodeRDD.
+                        flatMap(x=>x.getComposition)
+
+                refinedGraph.nodeRDD = refinedNodeRDD.union(nodeRDD)
+
+                // Step 1: Partitioning
+                val assigenment = refinedGraph.nodeRDD.map(x=>(x.getIdx,x.getPartition))
+
+                refinedGraph = KernighanLin.partition(graph,assigenment,true)
+            }
         }
+        refinedGraph.nodeNum = refinedGraph.nodeRDD.count()
+
         refinedGraph
     }
 
@@ -210,9 +213,11 @@ class MetisPartition{
 
         // 2.partitioning phase
         partitionedGraph = initialPartition(partitionedGraph, k)
+        println("coarsened performance="+partitionedGraph.graphPartitionEvaluation)
 
         // 3.un-coarsening phase
-//        partitionedGraph = uncoarsen(graph, k)
+        partitionedGraph = uncoarsen(graph)
+        println("uncoarsened performance="+partitionedGraph.graphPartitionEvaluation)
 
         graph
     }
