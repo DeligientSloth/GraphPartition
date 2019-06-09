@@ -74,6 +74,12 @@ object KernighanLin {
                 val swapItem = iteration(graph, needMaxGain)
                 if (swapItem == null) break()
 
+//                val weightSum1 = graph.nodeRDD.filter(_.getPartition
+//                        ==swapItem._1.getPartition).map(_.getWeight).reduce(_+_)
+//                val weightSum2 = graph.nodeRDD.filter(_.getPartition
+//                        ==swapItem._2.getPartition).map(_.getWeight).reduce(_+_)
+
+//                if(weightSum1/weightSum2<=2&&weightSum1/weightSum2>0.5)
                 graph.swapUpdate(swapItem._1, swapItem._2)
 
                 count += 1

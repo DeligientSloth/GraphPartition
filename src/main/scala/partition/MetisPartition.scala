@@ -79,10 +79,11 @@ class MetisPartition{
 
                 refinedGraph = KernighanLin.partition(graph,assigenment,true)
 //                count+=1
+                refinedGraph.nodeRDD = refinedGraph.nodeRDD.map(_.setChosen(false))
             }
         }
         refinedGraph.nodeNum = refinedGraph.nodeRDD.count()
-        refinedGraph.buildPartitionGraph()
+        //refinedGraph.buildPartitionGraph()
         refinedGraph
     }
 
@@ -168,29 +169,41 @@ class MetisPartition{
         graph.nodeNum-=1//combine two node
         graph
     }
-    private def heavyEdge(graph: Graph):(Node,Node,Double)={
 
+    // Heavy-edge matching (HEM)
+    private def heavyEdge(graph: Graph): (Node,Node)={
         val edge = graph.edgeRDD.filter(!_._4)//when two node isn't mark mark=false
         if(edge.isEmpty()) return null
 
         val maxEdge = edge.reduce((x,y)=>if(x._3>=y._3) x else y)
         val node1 = graph.nodeRDD.filter(_.getIdx==maxEdge._1).repartition(1).take(1)(0)
         val node2 = graph.nodeRDD.filter(_.getIdx==maxEdge._2).repartition(1).take(1)(0)//get two node
-
-        (node1,node2,maxEdge._3)
+        (node1,node2)
     }
+
+    private def randomheavyEdge(graph: Graph): (Node,Node)={
+        val edge = graph.edgeRDD.filter(!_._4)//when two node isn't mark mark=false
+        if(edge.isEmpty()) return null
+
+        val randomEdge = edge.takeSample(false,1,seed = 324)(0)
+//        ||
+//        x._1==randomEdge._2||x._2==randomEdge._2
+        val randomEdges = edge.filter(x=>x._1==randomEdge._1||x._2==randomEdge._1)
+        val maxEdge = randomEdges.reduce((x,y)=>if(x._3>=y._3) x else y)
+        val node1 = graph.nodeRDD.filter(_.getIdx==maxEdge._1).repartition(1).take(1)(0)
+        val node2 = graph.nodeRDD.filter(_.getIdx==maxEdge._2).repartition(1).take(1)(0)//get two node
+        (node1,node2)
+    }
+
+
     private def rollBack(graph: Graph):Graph={
         // mark flag roll back to false
         graph.nodeRDD = graph.nodeRDD.map(x=>x.setIsMark(false))
         graph.edgeRDD = graph.edgeRDD.map(x=>(x._1,x._2,x._3,false))
         graph
     }
+
     // Maximal Matching Algorithm
-
-    // Heavy-edge matching (HEM)
-
-    private def heavyEdgeMatching(graph: Graph): Graph={graph}
-
     def maxMatching(graph: Graph): Graph={
 
         // Step 1: Visit the vertices of the graph in random order.
@@ -200,7 +213,7 @@ class MetisPartition{
         breakable{
             while(true){
                 //two node is match
-                val matchEdge = heavyEdge(graph)
+                val matchEdge = randomheavyEdge(graph)
 
                 if(matchEdge==null) break()
 

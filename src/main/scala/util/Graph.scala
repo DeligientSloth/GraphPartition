@@ -37,20 +37,8 @@ class Graph extends Serializable {
         this
     }
     def buildPartitionGraph():Graph={
-        if(this.nodeRDD==null) return this
-        buildPartitionGraph(this.nodeRDD.map(x=>(x.getIdx,x.getPartition)))
-    }
-    def buildPartitionGraph(assignment: RDD[(String, Int)]):Graph={
-
         if(this.nodeRDD==null) buildGraph()
-
-        this.nodeRDD = this.nodeRDD.map(x=>(x.getIdx,x)).
-                join(assignment).map( //join (idx,(node,partition))
-            x=>x._2._1.setPartition(x._2._2)  //node,set partition
-        )
-
-        val map_idx_partition = assignment.collectAsMap()
-
+        val map_idx_partition = this.nodeRDD.map(x=>(x.getIdx,x.getPartition)).collectAsMap()
         this.nodeRDD=this.nodeRDD.map(
             x=>{
                 val neighbour = x.getNeighbour
@@ -65,6 +53,19 @@ class Graph extends Serializable {
                 x.setE(E).setI(I)
             }
         )
+        this
+    }
+    def buildPartitionGraph(assignment: RDD[(String, Int)]):Graph={
+
+        if(this.nodeRDD==null) buildGraph()
+
+        this.nodeRDD = this.nodeRDD.map(x=>(x.getIdx,x)).
+                join(assignment).map( //join (idx,(node,partition))
+            x=>x._2._1.setPartition(x._2._2)  //node,set partition
+        )
+
+        buildPartitionGraph()
+
         this
 //        assignPartitionToComposition()
     }
