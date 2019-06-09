@@ -2,16 +2,19 @@ package util
 
 import org.apache.spark.rdd.RDD
 
-class Graph(edge: RDD[(String, String, Double)]) extends Serializable {
+class Graph extends Serializable {
 
-    var edgeRDD: RDD[(String, String, Double, Boolean)] = edge.map(x=>(x._1,x._2,x._3,false))
+    var edgeRDD: RDD[(String, String, Double, Boolean)] = _
     //directed and undirected
-    val nodeIdxRDD: RDD[String] = edgeRDD.map(x => x._1).distinct().
-            union(edgeRDD.map(x => x._2).distinct()).distinct()
-    var nodeNum:Long = nodeIdxRDD.count()
+    var nodeNum:Long = 0
 
     var nodeRDD: RDD[Node] = _
-    var map_idx_partition: Map[String, Int] = _
+//    var map_idx_partition: Map[String, Int] = _ //test mode use
+    def this(edge: RDD[(String,String,Double)])={
+        this()
+        edgeRDD=edge.map(x=>(x._1,x._2,x._3,false))
+        if(this.nodeRDD==null) this.buildGraph()//lazy construct
+    }
 
     private def idx_to_partition(vertex_partition: List[Array[String]]): Map[String, Int] = {
         var lists: List[Array[(String, Int)]] = List()
@@ -19,14 +22,44 @@ class Graph(edge: RDD[(String, String, Double)]) extends Serializable {
             lists :+= vertex_partition(idx).map(x => (x, idx))
         lists.flatten.toMap
     }
+
     def buildGraph():Graph={
         nodeRDD = edgeRDD.map(
             x=>(x._1,x._2,x._3)).map(x => (x._1, (x._2,x._3))).
                 groupByKey().map(x=>(x._1,x._2.toMap)).
                 map(x=>new Node(x._1,x._2,0.0,0.0,0,false,false,1.0))
+        this.nodeNum=nodeRDD.count()
         this
     }
-    private def buildPartitionGraph(): Graph = {
+
+    def buildPartitionGraph(assignment: RDD[(String, Int)]):Graph={
+
+        if(this.nodeRDD==null) buildGraph()
+
+        this.nodeRDD = this.nodeRDD.map(x=>(x.getIdx,x)).
+                join(assignment).map( //join (idx,(node,partition))
+            x=>x._2._1.setPartition(x._2._2)  //node,set partition
+        )
+
+        val map_idx_partition = assignment.collectAsMap()
+
+        this.nodeRDD=this.nodeRDD.map(
+            x=>{
+                val neighbour = x.getNeighbour
+                var E = 0.0
+                var I = 0.0
+                for (elem <- neighbour) {
+                    if(map_idx_partition(elem._1)==x.getPartition)
+                        I+=elem._2
+                    else
+                        E+=elem._2
+                }
+                x.setE(E).setI(I)
+            }
+        )
+        this
+    }
+    private def buildPartitionGraph(map_idx_partition:Map[String,Int]): Graph = {
         /**
           * 1、首先组织一下数据，原来是两两连接的点，现在是(点:key, tuple(点，weight):value)
           * 也就是把连接点和连接的权重组织成一个tuple
@@ -73,16 +106,11 @@ class Graph(edge: RDD[(String, String, Double)]) extends Serializable {
         this
     }
 
-    def buildPartitionGraph(assignment: RDD[(String, Int)]): Graph = {
-
-        this.map_idx_partition = assignment.collect().toMap
-        buildPartitionGraph()
-    }
 
     def buildPartitionGraph(vertex_partition: List[Array[String]]): Graph = {
 
-        this.map_idx_partition = idx_to_partition(vertex_partition)
-        buildPartitionGraph()
+        val map_idx_partition = idx_to_partition(vertex_partition)
+        buildPartitionGraph(map_idx_partition)
     } // End of buildPartitionGraph
 
     def swapUpdate(swap_node_a: Node,
@@ -120,7 +148,7 @@ class Graph(edge: RDD[(String, String, Double)]) extends Serializable {
         )
 
         //    0.5*(inner_external_Weight._1-inner_external_Weight._2)
-        return inner_external_Weight._1 / inner_external_Weight._2
+        inner_external_Weight._1 / inner_external_Weight._2
     } // end of graphPartitionEvaluation
 
     def Print() = {

@@ -26,7 +26,7 @@ class MetisPartition{
         *          coarsening parameter c
         * @output: coarsen graph G_c
         * */
-        graph.edgeRDD.foreach(println)
+//        graph.edgeRDD.foreach(println)
         var coarsenedGraph = graph
         while(coarsenedGraph.nodeNum > c*k){
             coarsenedGraph = maxMatching(coarsenedGraph)
@@ -153,9 +153,9 @@ class MetisPartition{
                 else x
         ).distinct()
 
-        neighbourEdgeMap.foreach(println)
-        graph.edgeRDD.foreach(println)
-        println(node1.getIdx,node2.getIdx)
+//        neighbourEdgeMap.foreach(println)
+//        graph.edgeRDD.foreach(println)
+//        println(node1.getIdx,node2.getIdx)
         graph.nodeNum-=1//combine two node
         graph
     }
@@ -188,8 +188,6 @@ class MetisPartition{
 
         // Step 2: Match a vertex with the unmatched vertex that is connected with the heavier edge.
 
-        if(graph.nodeRDD==null) graph.buildGraph()//lazy construct
-
         breakable{
             while(true){
                 //two node is match
@@ -205,16 +203,16 @@ class MetisPartition{
         rollBack(graph)
     }
 
-    def partition(graph: Graph, k:Int): Graph={
+    def partition(graph: Graph, c:Int): Graph={
         var partitionedGraph = graph
         // 1.coarsening phase
-        partitionedGraph = coarsen(graph, 15)
+        partitionedGraph = coarsen(graph, c)
 
         // 2.partitioning phase
         partitionedGraph = initialPartition(partitionedGraph, k)
 
         // 3.un-coarsening phase
-        partitionedGraph = uncoarsen(graph, k)
+//        partitionedGraph = uncoarsen(graph, k)
 
         graph
     }

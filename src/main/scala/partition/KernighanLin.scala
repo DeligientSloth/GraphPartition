@@ -35,15 +35,14 @@ object KernighanLin {
     //partition algorithm
     private def randomPartition(graph: Graph, seed: Long): List[Array[String]] = {
 
-        val count: Int = graph.nodeIdxRDD.count().toInt
-        val half_count: Int = count / 2
+        val half_count: Int = graph.nodeNum.toInt / 2
 
         Random.setSeed(seed)
-        val shuffle_idx = Random.shuffle(graph.nodeIdxRDD.collect.toList).toArray
+        val shuffle_idx = Random.shuffle(graph.nodeRDD.map(_.getIdx).collect.toList).toArray
 
         var vertex_partition: List[Array[String]] = List()
         vertex_partition :+= shuffle_idx.take(half_count)
-        vertex_partition :+= shuffle_idx.takeRight(count - half_count)
+        vertex_partition :+= shuffle_idx.takeRight(graph.nodeNum.toInt - half_count)
 
         vertex_partition
     } // End of randomPartition
