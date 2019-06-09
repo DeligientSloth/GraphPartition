@@ -24,7 +24,6 @@ object SpectralClustering {
 
         val assign = modelPIC.assignments.map(x => (x.id.toString, x.cluster))
         graph.buildPartitionGraph(assign)
-
         graph
     }
 

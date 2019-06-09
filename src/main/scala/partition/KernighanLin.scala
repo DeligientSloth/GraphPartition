@@ -73,7 +73,8 @@ object KernighanLin {
 
                 val swapItem = iteration(graph, needMaxGain)
                 if (swapItem == null) break()
-                else graph.swapUpdate(swapItem._1, swapItem._2)
+
+                graph.swapUpdate(swapItem._1, swapItem._2)
 
                 count += 1
                 chosenNum += 1

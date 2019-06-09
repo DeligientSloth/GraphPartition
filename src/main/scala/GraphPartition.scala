@@ -43,10 +43,10 @@ object GraphPartition {
     def main(args: Array[String]): Unit = {
 
 
-        val edgeRDD = readGraph(args(0), true).persist()
+        val edgeRDD = readGraph(args(0), false).persist()
         var graph = new Graph(edgeRDD) //构建图
 
-        graph = new MetisPartition(2).partition(graph, 10)
+        graph = new MetisPartition(2).partition(graph, 14)
 
 //        val startTime = new Date().getTime
 //        // seed=324,12324,2324

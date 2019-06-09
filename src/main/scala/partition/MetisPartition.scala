@@ -56,6 +56,7 @@ class MetisPartition{
         // 移动后，全部的k(k-1)个队列都更新数据。
 
         // While current refined Graph has coarsen nodes
+//        var count=1
         breakable{
             while(true){
 
@@ -64,6 +65,8 @@ class MetisPartition{
                 var refinedNodeRDD = refinedGraph.nodeRDD.filter(x=>x.getWeight>1)
 
                 if(refinedNodeRDD.isEmpty()) break()
+
+                refinedNodeRDD = refinedNodeRDD.map(_.setCompositionPartition())
 
                 val nodeRDD = refinedGraph.nodeRDD.filter(x=>x.getWeight==1)
                 refinedNodeRDD = refinedNodeRDD.
@@ -75,10 +78,11 @@ class MetisPartition{
                 val assigenment = refinedGraph.nodeRDD.map(x=>(x.getIdx,x.getPartition))
 
                 refinedGraph = KernighanLin.partition(graph,assigenment,true)
+//                count+=1
             }
         }
         refinedGraph.nodeNum = refinedGraph.nodeRDD.count()
-
+        refinedGraph.buildPartitionGraph()
         refinedGraph
     }
 
@@ -122,10 +126,12 @@ class MetisPartition{
 
                 val weight = x.edgeWeight(node1)+x.edgeWeight(node2)
 
-                if(weight!=0) neighbourEdgeMap += (x.getIdx,newNode.getIdx)->weight
-
-                x.popNeighbour(node1).popNeighbour(node2).
-                        pushNeighbour((newNode.getIdx,weight))
+                if(weight!=0) {
+                    neighbourEdgeMap += (x.getIdx,newNode.getIdx)->weight
+                    x.popNeighbour(node1).popNeighbour(node2).
+                            pushNeighbour((newNode.getIdx,weight))
+                }
+                else x
             }
         )
 
@@ -214,12 +220,13 @@ class MetisPartition{
         // 2.partitioning phase
         partitionedGraph = initialPartition(partitionedGraph, k)
         println("coarsened performance="+partitionedGraph.graphPartitionEvaluation)
+        partitionedGraph.Print()
 
         // 3.un-coarsening phase
-        partitionedGraph = uncoarsen(graph)
+        partitionedGraph = uncoarsen(partitionedGraph)
         println("uncoarsened performance="+partitionedGraph.graphPartitionEvaluation)
 
-        graph
+        partitionedGraph
     }
 
 }

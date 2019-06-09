@@ -180,15 +180,12 @@ class Node(__idx: String,
 
         val weight_ab = swap_node_a.edgeWeight(swap_node_b)
 
-        def inversePartition(node: Node): Int =
-            if (node.getPartition == 1) 0 else 1
-
         if (is_node_a)
             return this.setE(I_a + weight_ab).setI(E_a - weight_ab).
-                    setChosen(true).setPartition(inversePartition(this))
+                    setChosen(true).setPartition(swap_node_b.getPartition)
         if (is_node_b)
             return this.setE(I_b + weight_ab).setI(E_b - weight_ab).
-                    setChosen(true).setPartition(inversePartition(this))
+                    setChosen(true).setPartition(swap_node_a.getPartition)
 
         val weight_a = this.edgeWeight(swap_node_a)
         val weight_b = this.edgeWeight(swap_node_b)
