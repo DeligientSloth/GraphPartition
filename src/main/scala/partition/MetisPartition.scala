@@ -13,6 +13,23 @@ class MetisPartition{
         this.k = k
     }
 
+    def partition(graph: Graph, c:Int, mode:String,weightNorm:Boolean): Graph={
+        var partitionedGraph = graph
+        // 1.coarsening phase
+        partitionedGraph = coarsen(graph, c,mode)
+
+        // 2.partitioning phase
+        partitionedGraph = initialPartition(partitionedGraph, weightNorm:Boolean)
+        println("Coarsened performance="+partitionedGraph.graphPartitionEvaluation)
+        partitionedGraph.printGraph()
+
+        // 3.un-coarsening phase
+        partitionedGraph = refine(partitionedGraph)
+        println("Refined performance="+partitionedGraph.graphPartitionEvaluation)
+
+        partitionedGraph
+    }
+
     /** Part I:
       * Three functions of Main Phase -- coarsen(), initialPartition(), refine() */
 
@@ -102,7 +119,7 @@ class MetisPartition{
                 if(matchEdge==null)
                     break()
 
-                mergeNode(graph,matchEdge) // Merge node
+                mergeGraph(graph,matchEdge) // Merge node
             }// End of while
         }// End of Breakable
         graph
@@ -121,16 +138,20 @@ class MetisPartition{
 
         // Step 2: Match a vertex with the unmatched vertex that is connected with the heavier edge.
         val maxEdge = edge.reduce((x,y)=>if(x._3>=y._3) x else y) // Compare the weights of edges
-        val node1 = graph.nodeRDD.filter(_.getIdx==maxEdge._1).repartition(1).take(1)(0)
-        val node2 = graph.nodeRDD.filter(_.getIdx==maxEdge._2).repartition(1).take(1)(0)
+        val node1 = graph.nodeRDD.filter(_.getIdx==maxEdge._1).
+            repartition(1).
+            take(1)(0)
+        val node2 = graph.nodeRDD.filter(_.getIdx==maxEdge._2).
+            repartition(1).
+            take(1)(0)
         // Return
         (node1,node2)
     }
 
     private def randomHeavyEdge(graph: Graph): (Node,Node)={
          /** Heavy-edge matching (HEM) with random select
-          * input:  graph, Graph
-          * output: maximal matching, tuple(Node, Node) */
+          *  input:  graph, Graph
+          *  output: maximal matching, tuple(Node, Node) */
 
         // Step 1: Visit the vertices of the graph in random order.
         val edge = graph.edgeRDD.filter(!_._4) // Visit the edge in which nodes aren't marked.
@@ -144,70 +165,74 @@ class MetisPartition{
 
         // Step 2: Match a vertex with the unmatched vertex that is connected with the heavier edge.
         val maxEdge = randomEdges.reduce((x,y)=>if(x._3>=y._3) x else y)
-        val node1 = graph.nodeRDD.filter(_.getIdx==maxEdge._1).repartition(1).take(1)(0)
-        val node2 = graph.nodeRDD.filter(_.getIdx==maxEdge._2).repartition(1).take(1)(0)
+        val node1 = graph.nodeRDD.filter(_.getIdx==maxEdge._1).
+            repartition(1).
+            take(1)(0)
+        val node2 = graph.nodeRDD.filter(_.getIdx==maxEdge._2).
+            repartition(1).
+            take(1)(0)
         // Return
         (node1,node2)
     }
 
-    private def mergeNode(graph: Graph, matchedNodes: (Node, Node)):Graph={
-        /** Merge nodes which are maximal matching. */
-        //get neighbour node->weight map
+    private def mergeGraph(graph: Graph, matchedNodes: (Node, Node)): Graph={
+        /**  Merge nodes according to maximal matching.
+          *  input:  graph - origin graph
+          *  output: graph - merged graph (smaller)
+          * */
 
-        // filter connection between two nodes
         val node1 = matchedNodes._1
         val node2 = matchedNodes._2
-        val newNode = unionNode(node1,node2)//union neighbour,composition
 
-        //convert to edge map
-        var neighbourEdgeMap:Map[(String,String),Double] =
+        /** Create a new node by merging Node 1 and Node 2. */
+        val newNode = mergeNode(node1,node2)
+        var neighbourEdgeMap: Map[(String,String),Double] =
             newNode.getNeighbour.map(x=>((newNode.getIdx,x._1),x._2))
 
-        // update node rdd
-        graph.nodeRDD = graph.nodeRDD.filter(
-            //just filter node2
-            _.getIdx!=node2.getIdx
-        ).map(x=>
-            if(x.getIdx==node1.getIdx)
-                newNode
-            else{
-                val weight = x.edgeWeight(node1) + x.edgeWeight(node2)
-                if(weight!=0) {
-                    neighbourEdgeMap += (x.getIdx,newNode.getIdx)->weight
-                    x.popNeighbour(node1).popNeighbour(node2).
-                        pushNeighbour((newNode.getIdx,weight))
-                }
-                else x
-            }
-        )
+        /** Add newly merged node to Spark RDD, remove old node from RDD. */
+        graph.nodeRDD = graph.nodeRDD.
+            filter(_.getIdx!=node2.getIdx).// Remove Node 2 from current RDD.
+            map(x=>
+                if(x.getIdx == node1.getIdx) // Convert Node 1 to newly merged node.
+                    newNode
+                else{
+                    val weight = x.edgeWeight(node1) + x.edgeWeight(node2)
+                    if(weight!=0) {
+                        // Modify node's neighbour array,
+                        // if the node is connect to Node 1 or Node 2.
+                        neighbourEdgeMap += (x.getIdx,newNode.getIdx) -> weight
+                        x.popNeighbour(node1).popNeighbour(node2).
+                            pushNeighbour((newNode.getIdx,weight))
+                    }
+                    else
+                        x // Remain other node unchanged.
+                }// End of If # 1
+            )// End of If # 2
 
-        //update edge rdd
-        //filter node1<->node2
-        graph.edgeRDD = graph.edgeRDD.filter
-            //node 2 doesn't exist
-        { x =>
-            !((x._1 == node1.getIdx && x._2 == node2.getIdx) ||
-                (x._1 == node2.getIdx) && (x._2 == node1.getIdx))
-        }
+        /** Remove old edges from Spark RDD. */
+        graph.edgeRDD = graph.edgeRDD.filter{ // Remove edges between Node 1 and Node 2.
+            x => !((x._1 == node1.getIdx && x._2 == node2.getIdx) ||
+            (x._1 == node2.getIdx) && (x._2 == node1.getIdx))}
 
-        graph.edgeRDD=graph.edgeRDD.map(
-            x=>
-                //which node are node1,node2
-                if(x._1==node1.getIdx||x._1==node2.getIdx)
-                    (newNode.getIdx,x._2,x._3,true)
-                else if(x._2==node1.getIdx||x._2==node2.getIdx)
-                    (x._1,newNode.getIdx,x._3,true)
-                else x
-        ).map(
-            x=>
+        graph.edgeRDD = graph.edgeRDD.
+            // Replace Node 1 and Node 2 in all edges with newly merged node.
+            map(x=>
+                if(x._1 == node1.getIdx || x._1 == node2.getIdx)
+                    (newNode.getIdx, x._2, x._3, true)
+                else if(x._2 == node1.getIdx || x._2 == node2.getIdx)
+                    (x._1, newNode.getIdx, x._3, true)
+               // Keep other nodes unchanged.
+                else x).
+            map(x=>
                 if(neighbourEdgeMap.contains((x._1,x._2)))
                     (x._1,x._2,neighbourEdgeMap((x._1,x._2)),true)
-                else x
-        ).distinct()
+                else x).
+            distinct() // Remove duplicate edges after edge merging.
 
-        graph.nodeNum-=1 //combine two node
+        graph.nodeNum -= 1 // Reduce the total node number.
         graph
     }
+
 
     private def refreshMarkedFlag(graph: Graph):Graph={
         /** Reset the marked flag of graph to false, after a maximal matching iteration over.
@@ -219,44 +244,36 @@ class MetisPartition{
         graph
     }
 
-
-    private def unionNode(node1:Node, node2:Node):Node={
-        val node = new Node(node1.getIdx,unionNeighbour(node1,node2))
+    private def mergeNode(node1:Node, node2:Node):Node={
+        /** Merge two nodes
+          * input:  node - Node 1
+          *         node - Node 2
+          * output: node - Merged node
+          * */
+        val node = new Node(node1.getIdx,mergeNeighbour(node1,node2))
         node.setComposition(List(node1,node2))
         node.setIsMark(true)
-        node.setWeight(node1.getWeight+node2.getWeight)
+        node.setWeight(node1.getWeight + node2.getWeight)
         node
     }
 
-    private def unionNeighbour(node1:Node, node2:Node): Map[String, Double] = {
+    private def mergeNeighbour(node1:Node, node2:Node): Map[String, Double] = {
+        /** Merge the neighbour lists of two nodes.
+          * input:  node - Node 1
+          *         node - Node 2
+          * output: Map[String, Double]
+          * */
 
-        val unionNeighbour = node1.popNeighbour(node2).getNeighbour++
+        val unionNeighbour = node1.popNeighbour(node2).getNeighbour ++
                 node2.popNeighbour(node1).getNeighbour
-        // shared neighbour
-        val intersetNeighbour = node1.getNeighbour.keySet & node2.getNeighbour.keySet
-        //shared neighbour weight sum
+        // Shared neighbour
+        val interSetNeighbour = node1.getNeighbour.keySet & node2.getNeighbour.keySet
+        // Shared neighbour weight sum
         val neighbour = unionNeighbour.map(x=>
-            if(intersetNeighbour.contains(x._1))
+            if(interSetNeighbour.contains(x._1))
                 (x._1,node1.edgeWeight(x._1) + node2.edgeWeight(x._1))
             else x)
         neighbour
-    }
-
-    def partition(graph: Graph, c:Int, mode:String,weightNorm:Boolean): Graph={
-        var partitionedGraph = graph
-        // 1.coarsening phase
-        partitionedGraph = coarsen(graph, c,mode)
-
-        // 2.partitioning phase
-        partitionedGraph = initialPartition(partitionedGraph, weightNorm:Boolean)
-        println("Coarsened performance="+partitionedGraph.graphPartitionEvaluation)
-        partitionedGraph.printGraph()
-
-        // 3.un-coarsening phase
-        partitionedGraph = refine(partitionedGraph)
-        println("Refined performance="+partitionedGraph.graphPartitionEvaluation)
-
-        partitionedGraph
     }
 
 }
