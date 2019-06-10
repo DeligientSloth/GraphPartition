@@ -121,10 +121,11 @@ object KernighanLin {
             x => x._1.getPartition != x._2.getPartition
         ).map(x => {
             (x._1, x._2, x._1.swapGain(x._2))
-        }).filter(_._3 > 0)
+        }).persist()
 
-        if (node_gain.isEmpty()) null
-        else node_gain.reduce((x, y) => {
+        val pos_gain = node_gain.filter(_._3 > 0)
+        if (pos_gain.isEmpty()) null
+        else pos_gain.reduce((x, y) => {
             if (x._3 >= y._3) x else y
         })
     }

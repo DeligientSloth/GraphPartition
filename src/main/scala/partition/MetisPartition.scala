@@ -20,7 +20,7 @@ class MetisPartition{
     // Three Main Phases
 
     // Step 1: Coarsening Phase
-    def coarsen(graph: Graph, c: Int): Graph={
+    def coarsen(graph: Graph, c: Int,mode:String): Graph={
         /*
         * @input:  origin graph G_o
         *          coarsening parameter c
@@ -29,17 +29,17 @@ class MetisPartition{
 //        graph.edgeRDD.foreach(println)
         var coarsenedGraph = graph
         while(coarsenedGraph.nodeNum > c*k){
-            coarsenedGraph = maxMatching(coarsenedGraph)
+            coarsenedGraph = maxMatching(coarsenedGraph,mode)
         }
         coarsenedGraph
     }
 
     // Step 2: Partitioning Phase
-    private def initialPartition(graph: Graph, k: Int): Graph={
+    private def initialPartition(graph: Graph, k: Int, weightNorm:Boolean): Graph={
         // Use Spectral Clustering
         var splitGraph = graph
 
-        splitGraph = SpectralClustering.partition(graph, k, 40)
+        splitGraph = SpectralClustering.partition(graph, k, 40, weightNorm)
 
         splitGraph
     }
@@ -204,16 +204,17 @@ class MetisPartition{
     }
 
     // Maximal Matching Algorithm
-    def maxMatching(graph: Graph): Graph={
+    def maxMatching(graph: Graph,mode:String): Graph={
 
         // Step 1: Visit the vertices of the graph in random order.
 
         // Step 2: Match a vertex with the unmatched vertex that is connected with the heavier edge.
-
+        var matchEdge:(Node,Node)=null
         breakable{
             while(true){
                 //two node is match
-                val matchEdge = randomheavyEdge(graph)
+                if(mode=="random") matchEdge = randomheavyEdge(graph)
+                else matchEdge = heavyEdge(graph)
 
                 if(matchEdge==null) break()
 
@@ -225,13 +226,13 @@ class MetisPartition{
         rollBack(graph)
     }
 
-    def partition(graph: Graph, c:Int): Graph={
+    def partition(graph: Graph, c:Int, mode:String,weightNorm:Boolean): Graph={
         var partitionedGraph = graph
         // 1.coarsening phase
-        partitionedGraph = coarsen(graph, c)
+        partitionedGraph = coarsen(graph, c,mode)
 
         // 2.partitioning phase
-        partitionedGraph = initialPartition(partitionedGraph, k)
+        partitionedGraph = initialPartition(partitionedGraph, k,weightNorm:Boolean)
         println("coarsened performance="+partitionedGraph.graphPartitionEvaluation)
         partitionedGraph.Print()
 
