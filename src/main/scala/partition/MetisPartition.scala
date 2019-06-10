@@ -75,9 +75,10 @@ class MetisPartition{
                 refinedGraph.nodeRDD = refinedNodeRDD.union(nodeRDD)
 
                 // Step 1: Partitioning
-                val assigenment = refinedGraph.nodeRDD.map(x=>(x.getIdx,x.getPartition))
-
-                refinedGraph = KernighanLin.partition(graph,assigenment,true)
+//                val assigenment = refinedGraph.nodeRDD.map(x=>(x.getIdx,x.getPartition))
+//                assigenment.foreach(println)
+                println("=============hahahahahahahah=================")
+                refinedGraph = KernighanLin.partition(refinedGraph,true)
 //                count+=1
                 refinedGraph.nodeRDD = refinedGraph.nodeRDD.map(_.setChosen(false))
             }
