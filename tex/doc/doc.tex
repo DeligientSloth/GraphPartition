@@ -1,0 +1,121 @@
+% !TEX program = xelatex
+
+\documentclass[UTF8,12pt]{ctexart} % 12pt 为字号大小
+\usepackage{amssymb,amsfonts,amsmath,amsthm}
+%\usepackage{fontspec,xltxtra,xunicode}
+%\usepackage{times}
+\renewcommand{\vec}[1]{\boldsymbol{#1}} % Uncomment for BOLD vectors.
+
+%\usepackage{CJKutf8}
+
+\usepackage{xeCJK}
+
+\usepackage{indentfirst}
+\setlength{\parindent}{2em}
+
+\renewcommand{\baselinestretch}{1.4} % 1.4倍行距
+
+%页边距
+\usepackage[a4paper]{geometry}
+\geometry{verbose,
+    tmargin=2cm,% 上边距
+    bmargin=2cm,% 下边距
+    lmargin=2cm,% 左边距
+    rmargin=2cm % 右边距
+}
+
+%图形相关
+\usepackage[x11names]{xcolor} % must before tikz, x11names defines RoyalBlue3
+\usepackage{graphicx}
+\usepackage{pstricks,pst-plot,pst-eps}
+\usepackage{subfig}
+\def\pgfsysdriver{pgfsys-dvipdfmx.def} % put before tikz
+\usepackage{tikz}
+
+\usepackage[boxruled,algosection,linesnumbered]{algorithm2e}
+
+\usepackage{listings}
+\usepackage{color}
+
+\usepackage{authblk}
+\usepackage{abstract}
+
+\definecolor{dkgreen}{rgb}{0,0.6,0}
+\definecolor{gray}{rgb}{0.5,0.5,0.5}
+\definecolor{mauve}{rgb}{0.58,0,0.82}
+
+\lstset{
+    frame=shadowbox,
+    aboveskip=3mm,
+    belowskip=3mm,
+    showstringspaces=false,
+    columns=flexible,
+    basicstyle={\small\ttfamily},
+    numbers=none,
+    numberstyle=\tiny\color{gray},
+    keywordstyle=\color{blue},
+    commentstyle=\color{dkgreen},
+    stringstyle=\color{mauve},
+    breaklines=true,
+    breakatwhitespace=true,
+    tabsize=4,
+    rulesepcolor=\color{red!20!green!20!blue!20},
+}
+
+%原文照排
+\usepackage{verbatim}
+
+\usepackage{url}
+
+%习题环境
+\theoremstyle{definition} 
+\newtheorem{exs}{习题}
+
+%解答环境
+\ifx\proof\undefined\
+\newenvironment{proof}[1][\protect\proofname]{\par
+\normalfont\topsep6\p@\@plus6\p@\relax
+\trivlist
+\itemindent\parindent
+\item[\hskip\labelsep
+\scshape
+#1]\ignorespaces
+}{%
+\endtrivlist\@endpefalse
+}
+\fi
+
+\renewcommand{\proofname}{\it{解答}}
+
+\begin{document}
+
+\title{基于Spark的图划分算法实现}
+\author[1]{李亮德}
+\author[1]{王凌霄}
+\author[2]{曹籽文}
+\author[2]{侯诗铭}
+\author[2]{路宏琳}
+\author[3]{尉德利}
+\affil[1]{中国科学院自动化研究所}
+\affil[2]{中国科学院信息工程研究所}
+\affil[3]{中国科学院大学人工智能学院}
+\renewcommand\Authands{, }
+% \date{} % 若不需要自动插入日期，则去掉前面的注释；{ } 中也可以自定义日期格式
+
+\maketitle
+
+\renewcommand{\abstractname}{}
+\begin{onecolabstract}
+    摘要 摘要 摘要 摘要 摘要 摘要 摘要 摘要 摘要 摘要 摘要 摘要
+\end{onecolabstract}
+
+\newpage
+\tableofcontents
+\newpage
+
+\input{section/sec1_intro.tex}
+\input{section/sec2_algorithm.tex}
+\input{section/sec3_spark.tex}
+\input{section/sec4_experiment.tex}
+
+\end{document}
