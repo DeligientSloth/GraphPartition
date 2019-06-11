@@ -1,0 +1,9 @@
+\section{Future Work}
+
+本次课程项目的一大遗憾就是没有搭建一个大的集群完成中大规模的图划分，未来计划搭建分布式集群完成一个大规模数据集上的图划分。另外，针对算法实现，一些算法在实现层面还有优化的空间，比如Kernighan–Lin计算点对的gain的那一步就可以用本文提出的mini-partition max gain近似算法来优化；metis算法的粗化过程是metis算法的瓶颈所在，还需要
+做出针对性的优化。针对系统优化，本项目对于spark的优化只是在算子层次的优化，比如减少shuffle和宽依赖，调整分区等等，未来需要学习一些spark的内核知识，从内核层次进行优化。针对图计算系统，本文采用了裸RDD封装，没有针对图结构在系统实现角度进行优化，未来计划深入学习分布式图计算知识，深入研究如spark GraphX等系统的源代码，做出一套实用的分布式图划分系统。
+
+
+\section{Conclusion}
+本次课程项目实现了hash partitioning，Spectral partitioning，Kernighan–Lin algorithm，METIS等算法。在软件实现角度上，本项目设计了针对图结构以及适用各种划分算法的数据结构，可扩展强。针对Kernighan–Lin算法计算最大增益复杂度过高的缺点，本项目提出stochastic max gian和mini-partition max gain两种策略；针对谱聚类特征值分解复杂度过高，难以并行化的缺点，本项目采用了幂迭代法来进行特征值分解；针对metis算法在粗化过程中，本项目针对heavy edge match存在的匹配点过于密集的缺点，使用了random heavy edge match最大匹配策略，让匹配点的分布更加均匀；
+针对metis在划分阶段容易产生不平衡划分的缺点，本文在谱聚类基础上，提出用节点的weight的$\alpha$次方对拉普拉斯矩阵矩阵归一化。另外，在spark系统实现的角度上，本项目很多操作实现了算子层次上的优化，大部分transformation都是通过窄依赖实现，很少使用宽依赖和shuffle操作，既减少了机器之间的数据传输也便于spark的DAGScheduler优化。
