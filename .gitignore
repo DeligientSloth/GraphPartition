@@ -6,3 +6,8 @@ target/
 network.zip
 out/
 out
+
+.aux
+.log
+.synctex.gz
+.toc
