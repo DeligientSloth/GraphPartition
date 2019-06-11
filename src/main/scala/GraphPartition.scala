@@ -24,7 +24,7 @@ object GraphPartition {
         val fileType: String = filePath.split('.')(1)
 
         val rdd = fileType match {
-            case "txt" => sparkSession.sparkContext.textFile(filePath).map(_.split(" "))
+            case "txt" => sparkSession.sparkContext.textFile(filePath).map(_.trim.split(" "))
             case "csv" => sparkSession.read.csv(filePath).rdd.map(x => x.toSeq.toArray)
             case _ => sparkSession.read.csv(filePath).rdd.map(x => x.toSeq.toArray)
         }
@@ -43,18 +43,18 @@ object GraphPartition {
     def main(args: Array[String]): Unit = {
 
 
-        val edgeRDD = readGraph(args(0), false).persist()
+        val edgeRDD = readGraph(args(0), args(1).toBoolean).persist()
         var graph = new Graph(edgeRDD) //构建图
-        //mode=random or heavy
-        graph = new MetisPartition(2).partition(graph, 15,"random",false)
 
-//        val startTime = new Date().getTime
+        val startTime = new Date().getTime
 //        // seed=324,12324,2324
-        //graph = KernighanLin.partition(graph, 324, true) //运行算法324,1,11324
-        //graph = SpectralClustering.partition(graph,4,40,false)
-//          graph = HashGraphPartition.partition(graph,2)
-//        val endTime = new Date().getTime
-//        println("运行时间=" + (endTime - startTime) / 1000.0)
+//        graph = KernighanLin.partition(graph, 123, true) //运行算法324,1,11324
+        graph = SpectralClustering.partition(graph,3,30,false)
+//          graph = HashGraphPartition.partition(graph,3)
+//        //mode=random or heavy
+        //graph = new MetisPartition(3).partition(graph, 15,"random",false)
+        val endTime = new Date().getTime
+        println("运行时间=" + (endTime - startTime) / 1000.0)
 //
         val performance = graph.graphPartitionEvaluation //评价图分割结果
         println("图分割的performance为: " + performance)

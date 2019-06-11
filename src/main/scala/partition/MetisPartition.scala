@@ -180,12 +180,13 @@ class MetisPartition{
         val maxEdge = randomEdges.reduce((x,y)=>if(x._3>=y._3) x else y)
         val node1 = graph.nodeRDD.filter(_.getIdx==maxEdge._1).
             repartition(1).
-            take(1)(0)
+            take(1)
         val node2 = graph.nodeRDD.filter(_.getIdx==maxEdge._2).
             repartition(1).
-            take(1)(0)
+            take(1)
+        if(node1.isEmpty||node2.isEmpty) return null
         // Return
-        (node1,node2)
+        (node1(0),node2(0))
     }
 
     private def mergeGraph(graph: Graph, matchedNodes: (Node, Node),level:Int): Graph={

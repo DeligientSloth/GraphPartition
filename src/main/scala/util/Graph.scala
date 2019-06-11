@@ -150,6 +150,52 @@ class Graph extends Serializable {
         this
     } // End of swapUpdate
 
+    def graphNCut:Double = {
+
+        val map_idx_partition = this.nodeRDD.map(x=>(x.getIdx,x.getPartition)).collectAsMap()
+        val partitionNodeNum = this.nodeRDD.map(x=>(x.getPartition,x.getIdx)).groupByKey().map(x=>(x._1,x._2.toList.length)).collectAsMap()
+
+        val partition_num = map_idx_partition.values.toList.distinct.length
+        val E = Array.ofDim[Double](partition_num, partition_num)
+        val I = Array.ofDim[Double](partition_num)
+
+        this.nodeRDD.map(
+            x=>{
+                val neighbour = x.getNeighbour
+                for (elem <- neighbour) {
+                    if(x.getPartition!=map_idx_partition(elem._1)){
+                        //x所在的partition指向邻居的partition
+                        E(x.getPartition)(map_idx_partition(elem._1))+=elem._2
+                        println(" e="+elem._2)
+                    }
+
+                    else{
+                        I(x.getPartition)+=1
+                        println(" i="+elem._2)
+                    }
+                    //同一个partition就是内聚
+
+                }//end for
+            }//end tranform
+        )//end map
+
+        println("debug")
+        println(partitionNodeNum)
+        I.foreach(println)
+        var nCut:Double = 0.0
+        var part = 0
+        for(e1<-E;i<-I){
+            //E的一行对应的分区对指向的所有列对应的分区
+            for(e2<-e1){
+                val norm=e2/partitionNodeNum(part)//所有列都用指向分区的度归一化
+                println(norm)
+                nCut+=norm
+            }
+            part+=1
+        }
+        nCut
+    }
+
     def graphPartitionEvaluation: Double = {
         //计算图内聚和图外连
         /**
