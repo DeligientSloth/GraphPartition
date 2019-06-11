@@ -1,4 +1,4 @@
-This is XeTeX, Version 3.14159265-2.6-0.99999 (TeX Live 2018/W32TeX) (preloaded format=xelatex 2019.2.6)  11 JUN 2019 11:43
+This is XeTeX, Version 3.14159265-2.6-0.99999 (TeX Live 2018/W32TeX) (preloaded format=xelatex 2019.2.6)  11 JUN 2019 17:04
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -1754,22 +1754,65 @@ LaTeX Font Info:    Try loading font information for U+msb on input line 105.
 File: umsb.fd 2013/01/14 v3.01 AMS symbols B
 ) [1
 
-] (./doc.toc)
+] (./doc.toc
+\g__fontspec_family_FangSong_int=\count370
+.................................................
+. fontspec info: "no-font-shape"
+. 
+. Could not resolve font "FangSong/BI" (it probably doesn't exist).
+.................................................
+.................................................
+. fontspec info: "no-font-shape"
+. 
+. Could not resolve font "FangSong/B" (it probably doesn't exist).
+.................................................
+.................................................
+. fontspec info: "no-font-shape"
+. 
+. Could not resolve font "FangSong/I" (it probably doesn't exist).
+.................................................
+.................................................
+. fontspec info: "defining-font"
+. 
+. Font family 'FangSong(0)' created for font 'FangSong' with options
+. [Script={CJK}].
+.  
+.  This font family consists of the following NFSS series/shapes:
+.  
+. - 'normal' (m/n) with NFSS spec.:
+. <->"FangSong/OT:script=hani;language=DFLT;"
+. - 'small caps'  (m/sc) with NFSS spec.: 
+.................................................
+)
 \tf@toc=\write6
 \openout6 = `doc.toc'.
 
 LaTeX Font Info:    Font shape `TU/SimSun(0)/m/sl' in size <12> not available
-(Font)              Font shape `TU/SimSun(0)/m/it' tried instead on input line 114.
+(Font)              Font shape `TU/SimSun(0)/m/it' tried instead on input line 124.
  [2] (./section/sec1_intro.tex) (./section/sec2_algorithm.tex [3]
 Missing character: There is no ⁡ in font [lmroman12-regular]:mapping=tex-text;!
- [4] [5]) (./section/sec3_spark.tex [6]) (./section/sec4_experiment.tex) [7] [8] (./doc.aux) ) 
+ [4]
+File: figure/metis.png Graphic file (type bmp)
+<figure/metis.png>
+ [5] [6]
+Missing character: There is no ， in font [lmroman12-regular]:mapping=tex-text;!
+ [7] [8] [9]) (./section/sec3_spark.tex
+LaTeX Font Info:    Font shape `TU/lmtt/bx/n' in size <12> not available
+(Font)              Font shape `TU/lmtt/b/n' tried instead on input line 17.
+ (c:/texlive/2018/texmf-dist/tex/latex/listings/lstlang1.sty
+File: lstlang1.sty 2015/06/04 1.6 listings language file
+) (c:/texlive/2018/texmf-dist/tex/latex/listings/lstlang2.sty
+File: lstlang2.sty 2015/06/04 1.6 listings language file
+) (c:/texlive/2018/texmf-dist/tex/latex/listings/lstlang3.sty
+File: lstlang3.sty 2015/06/04 1.6 listings language file
+) [10] [11] [12] [13] [14]) [15] [16] (./doc.aux) ) 
 Here is how much of TeX's memory you used:
- 33856 strings out of 492970
- 712005 string characters out of 6137299
- 859108 words of memory out of 5000000
- 37303 multiletter control sequences out of 15000+600000
- 537846 words of font info for 80 fonts, out of 8000000 for 9000
+ 34112 strings out of 492970
+ 717641 string characters out of 6137299
+ 902930 words of memory out of 5000000
+ 37535 multiletter control sequences out of 15000+600000
+ 537886 words of font info for 85 fonts, out of 8000000 for 9000
  1348 hyphenation exceptions out of 8191
- 61i,21n,96p,10504b,589s stack positions out of 5000i,500n,10000p,200000b,80000s
+ 61i,15n,96p,10504b,1718s stack positions out of 5000i,500n,10000p,200000b,80000s
 
-Output written on doc.pdf (8 pages).
+Output written on doc.pdf (16 pages).
