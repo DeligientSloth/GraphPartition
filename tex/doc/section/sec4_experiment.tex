@@ -77,8 +77,8 @@ c=50 &79.52152205384091 &73.314
 \subsection{谱聚类与metis算法的横向对比}
 下面分别比较当划分子图个数为2个，3个的时候，谱聚类与metis在三个数据集上面得到的图划分质量
 在AAAI network上的谱聚类的最大迭代次数取10，metis算法的c取35，
-在Zachary network上谱聚类的最大迭代次数取30，metis算法的c取？
-在Intra-organisational networks上谱聚类最大迭代次数取？，metis算法的c取20
+在Zachary network上谱聚类的最大迭代次数取30，metis算法的c取15
+在Intra-organisational networks上谱聚类最大迭代次数取20，metis算法的c取20
 
                       k=2
                                   AAAI network                       Zachary network(30)     
@@ -87,8 +87,9 @@ algorithm                   &peformance           &运行时间   &peformance  &
 metis(RHE,c=35)                  &79.52152205384091    &80.608     &15.75    &16.455
 
 Intra-organisational networks
-谱聚类
+谱聚类   &4.0835509138381205  &7.402
 metis   &4.607476635514018 &22.008
+
 
 
 
