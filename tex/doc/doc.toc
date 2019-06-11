@@ -1,0 +1,18 @@
+\contentsline {section}{\numberline {1}研究背景}{3}
+\contentsline {section}{\numberline {2}图划分算法}{3}
+\contentsline {subsection}{\numberline {2.1}随机划分}{4}
+\contentsline {subsection}{\numberline {2.2}谱方法}{4}
+\contentsline {subsection}{\numberline {2.3}启发式算法}{4}
+\contentsline {subsection}{\numberline {2.4}多层划分算法}{5}
+\contentsline {subsubsection}{\numberline {2.4.1}粗化阶段}{5}
+\contentsline {paragraph}{随机策略}{5}
+\contentsline {paragraph}{权重边策略}{5}
+\contentsline {subsubsection}{\numberline {2.4.2}初始划分阶段}{6}
+\contentsline {subsubsection}{\numberline {2.4.3}细化阶段}{6}
+\contentsline {subsubsection}{\numberline {2.4.4}整体算法流程}{7}
+\contentsline {section}{\numberline {3}基于Spark的图划分}{8}
+\contentsline {subsection}{\numberline {3.1}哈希划分算法实现}{8}
+\contentsline {subsection}{\numberline {3.2}谱聚类算法实现}{8}
+\contentsline {subsection}{\numberline {3.3}Kernighan-Lin算法实现}{8}
+\contentsline {subsection}{\numberline {3.4}Metis算法实现}{8}
+\contentsline {section}{\numberline {4}测试数据}{8}
