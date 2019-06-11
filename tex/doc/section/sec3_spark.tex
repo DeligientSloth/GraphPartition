@@ -105,8 +105,6 @@ object HashGraphPartition {
 \KwOut{类$C_1,C_2,\cdots,C_K$}
 \end{algorithm}
 
-
-
 \subsection{Kernighan-Lin算法实现}
 
 KL的思想是对于给定的图划分，尝试交换不同分区的点，计算交换带来的增益，选择增益大于0并且最大
@@ -114,6 +112,9 @@ KL的思想是对于给定的图划分，尝试交换不同分区的点，计算
 对于spark分布式计算而言，KL算法首先会根据输入的初始化图划分计算，构建划分图。这里构建划分图提供了好几种模式，
 主要是基于nodeRDD(针对nodeRDD已经存在的情况)构建，以及基于edgeRDD构建(nodeRDD还不存在)两种，
 基于nodeRDD的核心是根据邻居是否与自己在一个分区来计算这个节点跟内部和外部的连接权重。
+
+
+\begin{lstlisting}[language=Scala]
 def buildPartitionGraph():Graph={
         if(this.nodeRDD==null) buildGraph()
         val map_idx_partition = this.nodeRDD.map(x=>(x.getIdx,x.getPartition)).collectAsMap()
@@ -135,6 +136,8 @@ def buildPartitionGraph():Graph={
         )
         this
     }
+\end{lstlisting}
+
 瓶颈在于在数据量很大的时候，这种基于map表查询的方法存在性能瓶颈，更好的方法是通过join来实现节点邻居和分区信息的聚合，具体做法如下：
 
 随后KL算法会更新nodeRDD里面的各个属性（主要是E和I），E和I在KL算法执行过程中会迭代更新,伪代码如下：
@@ -143,10 +146,9 @@ KL partition
 input:graph,assignment RDD(node idx->partition id)
 output:graph
 
-while(还存在可以交换增益大于0的点){
-   找到最大增益的点对node a和node b
-   graph.swapUpdate(node a,node b)
-}
+% while 还存在可以交换增益大于0的点
+%    找到最大增益的点对node a和node b
+%    graph.swapUpdate(node a,node b)
 
 在迭代的每一步，KL算法首先是确定最大增益的点，优点是足够准确，需要的迭代次数较少，缺点是每次需要计算大量点对的增益。在spark分布式实现上，具体做法是求出nodeRDD的笛卡尔积，去除一些没必要计算的点之后求出点对之间的增益。
 只保留大于0的增益，然后通过reduce算子求出增大增益的点对。
@@ -182,27 +184,31 @@ def getMaxGain(nodeUnChosen: RDD[Node]): (Node, Node, Double) = {
 nodeRDD每一个node记录分布式调用node class的update方法，node class的update方法
 会根据点与交换两个点的连接关系更新E和I，每一次交换，程序都会记录performance的变化，便于观察。伪代码如下
 
+\begin{lstlisting}[language=Scala]
 graph.swapUpdate的细节是调用点的swapUpdate方法：
 this.nodeRDD = this.nodeRDD.map(
             x => x.swapUpdate(swap_node_a, swap_node_b)
         )
+\end{lstlisting}
 
-input:node d
-out put:update node d
-if 节点d是节点a本身
-    d.E = a.I+edgeWeight(a,b)
-    d.I = a.E-edgeWeight(a,b)
-else if 节点d是节点b本身
-    d.E = b.I+edgeWeight(a,b)
-    d.I = b.E-edgeWeight(a,b)
-else if 节点d跟节点a在一个分区
-    d.E = d.I-edgeWeight(d,a)+edgeWeight(d,b)
-    d.I = d.E+edgeWeight(d,a)-edgeWeight(d,b)
-else if 节点d跟节点b在一个分区
-    d.E = d.I+edgeWeight(d,a)-edgeWeight(d,b)
-    d.I = d.E-edgeWeight(d,a)+edgeWeight(d,b)
+% input:node d
+% out put:update node d
+% if 节点d是节点a本身
+%     d.E = a.I+edgeWeight(a,b)
+%     d.I = a.E-edgeWeight(a,b)
+% else if 节点d是节点b本身
+%     d.E = b.I+edgeWeight(a,b)
+%     d.I = b.E-edgeWeight(a,b)
+% else if 节点d跟节点a在一个分区
+%     d.E = d.I-edgeWeight(d,a)+edgeWeight(d,b)
+%     d.I = d.E+edgeWeight(d,a)-edgeWeight(d,b)
+% else if 节点d跟节点b在一个分区
+%     d.E = d.I+edgeWeight(d,a)-edgeWeight(d,b)
+%     d.I = d.E-edgeWeight(d,a)+edgeWeight(d,b)
 
 对应的scala代码为：
+
+\begin{lstlisting}[language=Scala]
 if (is_node_a)
             return this.setE(I_a + weight_ab).setI(E_a - weight_ab).
                     setChosen(true).setPartition(swap_node_b.getPartition)
@@ -230,7 +236,10 @@ if (is_node_a)
                 this.getE - weight_a + weight_b
             )
 
+\end{lstlisting}
+
 \subsection{Metis算法实现}
+
 metis算法主要是通过最大匹配，合并匹配点，来实现图的粗化，得到粗化的图之后调用一些图划分算法（比如谱聚类）
 将图划分为k个子图，然后对图进行细化，也就是将原来粗化的图一步步还原回来，由于在粗化的图上面进行图划分会有
 信息丢失，还原之后得到图划分不一定是最优的图划分，所以需要用KL算法来微调（交换一些点）
@@ -241,13 +250,12 @@ while(graph.nodeNum<c*k)
    找出图中所有的最大匹配边
    合并最大匹配的边对应的两个点
    状态回滚
-}
-其中最大匹配的伪代码如下：
-while(还存在可以匹配的边){
-找出下一条匹配的边
-合并两个点，更新nodeRDD以及edgeRDD
-}
 
+其中最大匹配的伪代码如下：
+
+% while(还存在可以匹配的边)
+% 找出下一条匹配的边
+% 合并两个点，更新nodeRDD以及edgeRDD
 
 其中的核心是找最大匹配边，这里采用了两种策略，一种是heavy Edge，一种是random Heavy Edge
 heavy Edge每次通过reduce算子找到两个端点都没有匹配过的边里面最大权重的边(filter,reduce)
@@ -273,16 +281,20 @@ edgeMap+=(D,new Node)->weight(D->new Node)
 
 
 union两个节点的邻居的scala代码如下：
+
+\begin{lstlisting}[language=Scala]
 unionMap = nodeA.neighbour++nodeB.neighbour
 intersetNeighbour = nodeA.neighbour.keySet & nodeB.neighbour.keySet
 unionMap.map(
    x=>if(x in intersetNeighbour)
     (x._1,nodeA.edgeWeight(x._1) + nodeB.edgeWeight(x._1))
 )
-
+\end{lstlisting}
 
 node RDD在更新过程中会维护一个需要更新的边表（需要更新的边较少，内存可以存下来），更新的scala代码如下：
 
+\begin{lstlisting}[language=Scala]
+    
 val newNode = mergeNode(node1,node2,level)
         var neighbourEdgeMap: Map[(String,String),Double] =
             newNode.getNeighbour.map(x=>((newNode.getIdx,x._1),x._2))
@@ -303,13 +315,16 @@ graph.nodeRDD = graph.nodeRDD.filter(
         else x
     }
 )
+\end{lstlisting}
+
 edge RDD可以根据之前需要更新的边表来更新，scala代码如下
+
+\begin{lstlisting}[language=Scala]
 graph.edgeRDD = graph.edgeRDD.filter
     { x =>
         !((x._1 == node1.getIdx && x._2 == node2.getIdx) ||
                 (x._1 == node2.getIdx) && (x._2 == node1.getIdx))
     }
-
 
 graph.edgeRDD=graph.edgeRDD.map(
     x=>
@@ -326,25 +341,33 @@ graph.edgeRDD=graph.edgeRDD.map(
         else x
 ).distinct()
 
+\end{lstlisting}
+
 另外，粗化过程的最大匹配每次都是组合两个点，需要记录这两个点的信息，因此在node类的属性上加入了composition和compositionLevel属性，分别表示这个节点由那两个节点组合而成，以及是在粗化的哪一个阶段组合而成。
 
 划分
+
 划分主要通过调用谱聚类完成，但是前面提到heavy Edge策略的时候，空间上容易形成聚集，而这些聚集的点
 与其他点的连接权重还会增加，所以这些点很容易聚成一类，解决方法是对拉普拉斯矩阵用点的weight进行归一化
-原来用度矩阵的时候，使用度矩阵归一化，目标是求D^(-1/2)LD^(-1/2)，
-归一化之后，L矩阵本质上对每一个项目是L_{ij}/sqrt(D_i)sqrt(D_j)
+
+原来用度矩阵的时候，使用度矩阵归一化，目标是求$D^(-1/2)LD^(-1/2)$，
+归一化之后，L矩阵本质上对每一个项目是$L_{ij}/sqrt(D_i)sqrt(D_j)$
 现在归一化weight也采用相似的思路，L矩阵每一个项变为：
-L_{ij}/sqrt(D_i)sqrt(D_j)weight(i)weight(j)
+$$L_{ij}/sqrt(D_i)sqrt(D_j)weight(i)weight(j)$$
+
 实验过程中发现对于均衡性的改善还不够，于是我用node权重alpha次方进行归一化：
-L_{ij}/sqrt(D_i)sqrt(D_j)weight(i)^alpha weight(j)^alpha
+$$L_{ij}/sqrt(D_i)sqrt(D_j)weight(i)^alpha weight(j)^alpha$$
+
 对应的矩阵形式为:
-Wnode^(-alpha)D^(-1/2)LD^(-1/2)Wnode^(-alpha)
+$$Wnode^(-alpha)D^(-1/2)LD^(-1/2)Wnode^(-alpha)$$
 实现过程中发现alpha=2效果较好
 
 细化过程
 细化过程本质上是递归的分解组合点，是粗化的逆过程，类似一个堆栈的出栈过程
 需要根据每个点记录的compositionLevel属性确定“出栈”的顺序，直到compositionLevel=0说明已经到达“栈顶”，无需继续细化。细化过程是针对nodeRDD展开的，用flatmap算子对当前细化层次的node分解其composition，得到两个新的点，对于不需要分解的点直接拷贝过来。通过union两部分nodeRDD得到细化图的nodeRDD，然后调用KL算法微调（本项目写的KL算法，本身支持K-way）
 scala代码如下
+
+\begin{lstlisting}[language=Scala]
 var refinedGraph = graph
         var refineLevel = level
 
@@ -374,6 +397,4 @@ var refinedGraph = graph
             refineLevel-=1 //refine Level decrease 1, up refine
         }
 
-
-
-
+\end{lstlisting}
