@@ -146,10 +146,7 @@ Kernighan-Lin算法的思想迭代贪心优化。
     \item 基于\texttt{edgeRDD}的方法，也就是\texttt{nodeRDD}还不存在的情况
 \end{enumerate}
 
-基于\texttt{nodeRDD}的核心是根据邻居是否与自己在一个分区来计算这个节点跟内部和外部的连接权重。
-
-基于\texttt{nodeRDD}的划分方法的瓶颈在于在数据量很大的时候，基于map表查询的方法存在性能瓶颈。
-更好的方法是通过join来实现节点邻居和分区信息的聚合，具体做法如下：
+基于\texttt{nodeRDD}的核心是根据邻居是否与自己在一个分区来计算这个节点跟内部和外部的连接权重。具体的Scala代码如下：
 
 \begin{lstlisting}[language=Scala]
 def buildPartitionGraph():Graph={
@@ -174,7 +171,21 @@ def buildPartitionGraph():Graph={
     this
 }
 \end{lstlisting}
-
+基于\texttt{nodeRDD}的划分方法的瓶颈在于在数据量很大的时候，map表查询的方法存在性能瓶颈。
+更好的方法是通过join来实现节点邻居和分区信息的聚合，具体Scala代码如下：
+\begin{lstlisting}[language=Scala]
+val neighbour_idx_weight:RDD[(String,(String,Double,Int))] = this.nodeRDD.map(
+            x=>(
+                    x.getIdx,
+                    x.getNeighbour.map(y=>(x.getIdx,y._1,y._2,x.getPartition)),
+            )).flatMap(_._2).map(x=>(x._2,(x._1,x._3,x._4)))
+        val idx_partition:RDD[(String,Int)] = this.nodeRDD.map(x=>(x.getIdx,x.getPartition))
+        val idx_neighbour_partition =
+            neighbour_idx_weight.join(idx_partition).
+                    map(x=>((x._2._1._1,x._2._1._3),(x._1,x._2._1._2,x._2._2)))
+        val idxNeighbourPartition =
+            idx_neighbour_partition.groupByKey().map(x=>(x._1._1,x._2.toList,x._1._2))
+\end{lstlisting}
 随后KL算法会更新\texttt{nodeRDD}里面的各个属性，特别是$E$和$I$，$E$和$I$在KL算法执行过程中会迭代更新。
 
 在迭代的每一步，KL算法首先是确定最大增益的点。
