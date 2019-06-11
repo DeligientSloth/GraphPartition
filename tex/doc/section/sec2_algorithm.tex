@@ -11,19 +11,6 @@
 散列划分的优势在于简单易实现，不需要额外的开销且划分均衡可控。
 但这种方法的缺陷也是非常明显的，它没有考虑到图的内部结构，各节点会被随机地划分到各分区中，结果就是区间边会非常多，对后续的操作造成很大不便，并产生巨大的通信开销。
 
-\subsubsection{哈希划分算法流程}
-
-\begin{algorithm}[htbp]
-\SetAlgoLined
-\KwIn{a differentiable action-value function parameterization:
-        $\hat{q} : \mathcal{S} \times \mathcal{A} \times \mathbb{R}^{d} \rightarrow \mathbb{R}$}
-\KwIn{a policy $\pi$ (if estimating $q_{\pi}$ )}
-Algorithm parameters: step size $\alpha \in (0,1]$, small $\epsilon > 0 $, a positive integer $n$\;
-Initialize value-function weights $\mathbf{w} \in \mathbb{R}^{d}$ arbitrarily (e.g., $\mathbb{w} = 0$)
-All store and access operations (for $S_t$, $A_t$, and $R_t$) can take their index mod $n + 1$ \;
-
-\caption{Episodic semi-gradient $n$-step Sarsa for estimating $\hat{q} \approx q_* $ or $q_\pi$}
-\end{algorithm}
 
 
 \subsection{谱方法}
@@ -34,48 +21,22 @@ All store and access operations (for $S_t$, $A_t$, and $R_t$) can take their ind
 谱聚类利用样本数据的相似矩阵$L$（即拉普拉斯矩阵）进行特征分解，然后对特征向量进行聚类。
 拉普拉斯矩阵反映了各节点间的连接信息，它可以通过图的度矩阵$D$和关联矩阵$A$求得：$L=D-A$
 构造关联矩阵$A$需要计算样本两两之间的相似度值，这里一般使用高斯核函数来计算相似度。
-度矩阵$D$是一个对角矩阵，对角元素$D_{ii}=deg⁡(i)$。
-
-谱聚类使得子图内部尽量相似，子图间距离尽量较远。
-常见谱聚类的最优目标函数有两种：
-
-\begin{enumerate}
-    \item 可以是\textbf{Min Cut}，即割边最小分割——的Smallest cut
-    \item 可以是\textbf{Normalized Cut}，即分割规模差不多且割边最小的分割——Best cut
-\end{enumerate}
-
-$L$矩阵中的元素定义如下所示：
-
-\begin{equation}
-    L_{i j}=\left\{\begin{array}{cc}{1,} & {\text { if } e(i, j) \in E} \\ {-\operatorname{deg}(i),} & {\text { if } i=j} \\ {0,} & {\text { other }}\end{array}\right.
-\end{equation}
+度矩阵$D$是一个对角矩阵，对角元素$D_{ii}=deg⁡(i)$。为了控制划分的各个子图规模不至于差异过大，一般还需要用度矩阵进行归一化。
 
 基于图谱理论的划分方法的主要思想是：
-如果图$G$是连通的，那么其第二小特征值(最小的是$0$)也就是Fiedler特征值将给出图的连通性的一个度量。
-如果将每个节点按对应的Fiedler特征值进行排序，然后将排好的序列分成$k$个部分，每个部分的节点将构成一个分区，即可实现图划分。
-然而从计算量上来看，Fiedler特征值的计算和排序都较为复杂。
+如果图$G$是连通的，那么其第二小特征值(最小的是$0$)也就是拉普拉斯矩阵的特征值将给出图的连通性的一个度量。
+如果将每个节点按对应的拉普拉斯矩阵特征值进行排序，然后将排好的序列分成$k$个部分，每个部分的节点将构成一个分区，即可实现图划分。实际上，还需要对$k$个特征值组成的低维嵌入空间调用KMeans算法进一步聚类
+得到聚类结果。
+然而从计算量上来看，拉普拉斯矩阵的特征值的计算和排序都较为复杂。
 谱方法能为许多不同类的问题提供较好的划分，但是谱方法的计算量非常大。
-
-\subsubsection{谱聚类算法流程}
-
-\begin{algorithm}[htbp]
-\caption{谱聚类算法流程}
-\SetAlgoLined
-\KwIn{a differentiable action-value function parameterization:
-        $\hat{q} : \mathcal{S} \times \mathcal{A} \times \mathbb{R}^{d} \rightarrow \mathbb{R}$}
-\KwIn{a policy $\pi$ (if estimating $q_{\pi}$ )}
-
-\end{algorithm}
-
-\subsection{启发式算法}
 
 启发式算法通常是在对图已经进行过划分的结果上对其进行优化调整的。
 启发式算法的划分结果很大程度的依赖初始划分的结果，为获得较好划分结果，需要与能够产生好较优划分的算法结合。
 为了提高算法的执行效率，启发式算法通常将随机划分的结果作为初始划分，然后通过一些局部优化的方法减少交叉边的数量以达到降低通信代价的优化目的。
 
 W.Kernighan和S. Lin 提出了Kernighan-Lin算法[2]，它是一种比较典型的基于启发式规则的求解策略。
-KL算法是一种贪婪算法，其初始划分选取了递归二分法。
-首先将图随机划分成两个子图且要求子图规模尽量一致即保证负载均衡，接着随机交换划分后两个子图的任意两个顶点并对其进行标记，依次选取未被标记的顶点进行交换，当所有标记过的顶点都经过交换之后，结束一轮迭代过程。
+Kernighan-Lin算法是一种贪婪算法，其初始划分选取了递归二分法。
+首先将图随机划分成两个子图且要求子图规模尽量一致即保证负载均衡，接着通过计算任意两个顶点划分带来的增益，交换带来增益最大的两个顶点，并对其进行标记。依次选取未被标记的顶点进行交换，当所有标记过的顶点都经过交换之后，结束一轮迭代过程。
 记录每次迭代的过程中记录的交叉边个数最少，即划分质量最优的时顶点的划分状态，并将这种状态作为下次迭代的初始化分，以此类推。
 当下次迭代对划分质量无明显改善时，停止迭代。
 KL算法流程图如下图所示。
