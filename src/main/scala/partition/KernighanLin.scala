@@ -98,6 +98,13 @@ object KernighanLin {
         graph
     }
     def partition(graph: Graph,
+                  needMaxGain: Boolean):Graph={
+
+        graph.buildPartitionGraph()
+
+        swapLoop(graph,needMaxGain)
+    }
+    def partition(graph: Graph,
                   assigenment:RDD[(String,Int)],
                   needMaxGain: Boolean):Graph={
 

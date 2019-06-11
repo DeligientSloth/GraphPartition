@@ -15,8 +15,12 @@ class MetisPartition{
 
     def partition(graph: Graph, c:Int, mode:String,weightNorm:Boolean): Graph={
         var partitionedGraph = graph
+        var level:Int=0 // coarsen and refine level
         // 1.coarsening phase
-        partitionedGraph = coarsen(graph, c,mode)
+        val coarsenRes = coarsen(graph, c,mode)
+
+        partitionedGraph = coarsenRes._1 // coarsen Graph
+        level = coarsenRes._2  //coarsen level
 
         // 2.partitioning phase
         partitionedGraph = initialPartition(partitionedGraph, weightNorm:Boolean)
@@ -24,7 +28,7 @@ class MetisPartition{
         partitionedGraph.printGraph()
 
         // 3.un-coarsening phase
-        partitionedGraph = refine(partitionedGraph)
+        partitionedGraph = refine(partitionedGraph,level) //need level to decide refine order
         println("Refined performance="+partitionedGraph.graphPartitionEvaluation)
 
         partitionedGraph
@@ -33,7 +37,7 @@ class MetisPartition{
     /** Part I:
       * Three functions of Main Phase -- coarsen(), initialPartition(), refine() */
 
-    private def coarsen(graph: Graph, c: Int,mode:String): Graph={
+    private def coarsen(graph: Graph, c: Int,mode:String): (Graph,Int)={
         /** Step 1: Coarsening Phase (via Maximal Matching Algorithm)
           * input:  origin graph G_o,
           *         coarsening parameter c,
@@ -41,11 +45,13 @@ class MetisPartition{
           * output: coarsen graph G_c
         * */
         var coarsenedGraph = graph
+        var level = 0
         while(coarsenedGraph.nodeNum > c*k){
-            coarsenedGraph = maximalMatching(coarsenedGraph, mode)
+            level += 1
+            coarsenedGraph = maximalMatching(coarsenedGraph, mode,level)
             coarsenedGraph = refreshMarkedFlag(coarsenedGraph)
         }
-        coarsenedGraph
+        (coarsenedGraph,level)
     }
 
     private def initialPartition(graph: Graph, useWeightNorm:Boolean): Graph={
@@ -58,36 +64,42 @@ class MetisPartition{
         splitGraph
     }
 
-    private def refine(graph: Graph): Graph={
+    private def refine(graph: Graph,level:Int): Graph={
         /** Step 3: Refining Phase (via Kernighan-Lin Algorithm)
           * input: graph - initial partition graph
+          *        level - refine level
           * output: refined graph
           * */
 
         var refinedGraph = graph
+        var refineLevel = level
 
-        breakable{
-            while(true){
-                /** Step 1: Split coarsen node to refined nodes. */
+        //refine Level = 0 indicates that nodes all
+        while(refineLevel!=0){
+            /** Step 1: Split coarsen node to refined nodes. */
 
-                // 1.1 Find coarsen nodes and refine them (new node)
-                var refinedNodeRDD = refinedGraph.nodeRDD.filter(x=>x.getWeight>1)
-                if(refinedNodeRDD.isEmpty()) break()
-                refinedNodeRDD = refinedNodeRDD.map(_.setCompositionPartition())
+            // 1.1 Find coarsen nodes and refine them (new node)
+            var refinedNodeRDD = refinedGraph.nodeRDD.filter(x=>x.getComposLevel==refineLevel)
 
-                // 1.2 Save the nodes which don't need to refine
-                val nodeRDD = refinedGraph.nodeRDD.filter(x=>x.getWeight==1)
-                refinedNodeRDD = refinedNodeRDD.flatMap(x=>x.getComposition)
+            refinedNodeRDD = refinedNodeRDD.map(_.setCompositionPartition())
 
-                // 1.3 Union two parts of refined nodes.
-                refinedGraph.nodeRDD = refinedNodeRDD.union(nodeRDD)
+            // 1.2 Save the nodes which don't need to refine
+            val nodeRDD = refinedGraph.nodeRDD.filter(x=>x.getComposLevel!=refineLevel)
+            refinedNodeRDD = refinedNodeRDD.flatMap(x=>x.getComposition)
 
-                /** Step 2: Partitioning */
-                val assignment = refinedGraph.nodeRDD.map(x=>(x.getIdx,x.getPartition))
-                refinedGraph = KernighanLin.partition(graph, assignment, needMaxGain = true)
-                refinedGraph.nodeRDD = refinedGraph.nodeRDD.map(_.setChosen(false))
-            }
+            // 1.3 Union two parts of refined nodes.
+            refinedGraph.nodeRDD = refinedNodeRDD.union(nodeRDD)
+
+
+            /** Step 2: Partitioning */
+            val assignment = refinedGraph.nodeRDD.map(x=>(x.getIdx,x.getPartition))
+
+            refinedGraph = KernighanLin.partition(refinedGraph, assignment, needMaxGain = true)
+            refinedGraph.nodeRDD = refinedGraph.nodeRDD.map(_.setChosen(false))
+
+            refineLevel-=1 //refine Level decrease 1, up refine
         }
+
         refinedGraph.nodeNum = refinedGraph.nodeRDD.count()
         refinedGraph
     }
@@ -101,10 +113,11 @@ class MetisPartition{
       * heavy-edge matching (heavyEdge)
       * */
 
-    private def maximalMatching(graph: Graph, mode:String): Graph={
+    private def maximalMatching(graph: Graph, mode:String,level:Int): Graph={
         /** Maximal Matching Algorithm
           * input: graph
           *        matching mode, ie "random"
+          *        level
           * output: graph
           * */
 
@@ -119,7 +132,7 @@ class MetisPartition{
                 if(matchEdge==null)
                     break()
 
-                mergeGraph(graph,matchEdge) // Merge node
+                mergeGraph(graph,matchEdge,level) // Merge node
             }// End of while
         }// End of Breakable
         graph
@@ -175,7 +188,7 @@ class MetisPartition{
         (node1,node2)
     }
 
-    private def mergeGraph(graph: Graph, matchedNodes: (Node, Node)): Graph={
+    private def mergeGraph(graph: Graph, matchedNodes: (Node, Node),level:Int): Graph={
         /**  Merge nodes according to maximal matching.
           *  input:  graph - origin graph
           *  output: graph - merged graph (smaller)
@@ -185,7 +198,7 @@ class MetisPartition{
         val node2 = matchedNodes._2
 
         /** Create a new node by merging Node 1 and Node 2. */
-        val newNode = mergeNode(node1,node2)
+        val newNode = mergeNode(node1,node2,level)
         var neighbourEdgeMap: Map[(String,String),Double] =
             newNode.getNeighbour.map(x=>((newNode.getIdx,x._1),x._2))
 
@@ -244,14 +257,16 @@ class MetisPartition{
         graph
     }
 
-    private def mergeNode(node1:Node, node2:Node):Node={
+    private def mergeNode(node1:Node, node2:Node,level:Int):Node={
         /** Merge two nodes
           * input:  node - Node 1
           *         node - Node 2
+          *         level - composLevel
           * output: node - Merged node
           * */
         val node = new Node(node1.getIdx,mergeNeighbour(node1,node2))
-        node.setComposition(List(node1,node2))
+
+        node.setComposition(List(node1,node2),level)
         node.setIsMark(true)
         node.setWeight(node1.getWeight + node2.getWeight)
         node
@@ -266,6 +281,7 @@ class MetisPartition{
 
         val unionNeighbour = node1.popNeighbour(node2).getNeighbour ++
                 node2.popNeighbour(node1).getNeighbour
+
         // Shared neighbour
         val interSetNeighbour = node1.getNeighbour.keySet & node2.getNeighbour.keySet
         // Shared neighbour weight sum
@@ -273,7 +289,9 @@ class MetisPartition{
             if(interSetNeighbour.contains(x._1))
                 (x._1,node1.edgeWeight(x._1) + node2.edgeWeight(x._1))
             else x)
+
         neighbour
+
     }
 
 }

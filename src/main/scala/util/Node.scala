@@ -1,19 +1,18 @@
 package util
 
-//import scala.collection.mutable.Map
-
 class Node(__idx: String,
            __neighbour: Map[String,Double]) extends Serializable {
 
-    private val idx: String = __idx
-    private var neighbour: Map[String,Double] = __neighbour
-    private var E: Double = 0.0
-    private var I: Double = 0.0
-    private var partition: Int = 0 //表示这个点在第几个图里面，从0开始
-    private var chosen: Boolean = false
-    private var composition: List[Node] = List()//表示组成只有自己
-    private var isMark:Boolean = false
-    private var weight:Double = 1.0
+    private val idx: String = __idx//node的id
+    private var neighbour: Map[String,Double] = __neighbour//node的邻居，表示node指向的节点
+    private var E: Double = 0.0//node的外部权重，跟不在一个子图的node的连接权重之和
+    private var I: Double = 0.0//node的内部权重，跟在一个子图的node的连接权重之和
+    private var partition: Int = 0 //node所在子图的id，从0开始
+    private var chosen: Boolean = false//这个node是否被交换过
+    private var composition: List[Node] = List()//node由原来哪些node组成
+    private var composLevel = 0 //each node's compos Level
+    private var isMark:Boolean = false//node是否是匹配点
+    private var weight:Double = 1.0//node的权重
 
     def this(idx: String, neighbour: Map[String,Double],
              E: Double, I: Double = 0,
@@ -50,20 +49,6 @@ class Node(__idx: String,
         this
     }
 
-//    def unionNeighbour(node1:Node,node2:Node): Node = {
-//
-//        val unionNeighbour = node1.popNeighbour(node2).getNeighbour++
-//                node2.popNeighbour(node1).getNeighbour
-//        // shared neighbour
-//        val intersetNeighbour = node1.getNeighbour.keySet & otherNode.getNeighbour.keySet
-//        //shared neighbour weight sum
-//        this.neighbour = unionNeighbour.map(x=>
-//            if(intersetNeighbour.contains(x._1))
-//                (x._1,this.edgeWeight(x._1) + otherNode.edgeWeight(x._1))
-//            else x)
-//        this
-//    }
-
     def pushNeighbour(neighbourNode:(String,Double)): Node = {
         this.neighbour+=neighbourNode
         this
@@ -89,15 +74,9 @@ class Node(__idx: String,
         this
     }
 
-//    def addComposition(otherNode:Node): Node = {
-//        this.composition:+=this
-//        this.composition:+=otherNode
-//        this
-//    }
-
-
-    def setComposition(composition:List[Node]): Node = {
+    def setComposition(composition:List[Node],composLevel:Int): Node = {
         this.composition = composition
+        this.composLevel = composLevel
         this
     }
 
@@ -105,15 +84,6 @@ class Node(__idx: String,
         this.weight = weight
         this
     }
-
-//    def unionNode(node1:Node,node2:Node): Node={
-//
-//        unionNeighbour(otherNode)
-//        addComposition(otherNode)
-//        this.isMark=true
-//        this.weight+=otherNode.weight
-//        this
-//    }
 
     def getIdx: String = this.idx
 
@@ -132,6 +102,8 @@ class Node(__idx: String,
     def getComposition: List[Node] = this.composition
 
     def getWeight: Double = this.weight
+
+    def getComposLevel:Int = this.composLevel
 
     def isNeighbour(otherNode:Node):Boolean= {
         this.neighbour.contains(otherNode.getIdx)

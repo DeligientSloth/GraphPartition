@@ -43,15 +43,15 @@ object GraphPartition {
     def main(args: Array[String]): Unit = {
 
 
-        val edgeRDD = readGraph(args(0), true).persist()
+        val edgeRDD = readGraph(args(0), false).persist()
         var graph = new Graph(edgeRDD) //构建图
         //mode=random or heavy
-        graph = new MetisPartition(2).partition(graph, 10,"random",false)
+        graph = new MetisPartition(2).partition(graph, 15,"random",false)
 
 //        val startTime = new Date().getTime
 //        // seed=324,12324,2324
         //graph = KernighanLin.partition(graph, 324, true) //运行算法324,1,11324
-//        graph = SpectralClustering.partition(graph,2,40)
+        //graph = SpectralClustering.partition(graph,4,40,false)
 //          graph = HashGraphPartition.partition(graph,2)
 //        val endTime = new Date().getTime
 //        println("运行时间=" + (endTime - startTime) / 1000.0)
@@ -59,7 +59,7 @@ object GraphPartition {
         val performance = graph.graphPartitionEvaluation //评价图分割结果
         println("图分割的performance为: " + performance)
         println("划分得到的子图")
-        graph.Print()
+        graph.printGraph()
         graph.edgeRDD.foreach(println)
 
         println(graph.nodeRDD.count())
