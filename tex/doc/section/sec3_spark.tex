@@ -1,9 +1,232 @@
 \section{基于Spark的图划分}
 
+Apache Spark是一个开源集群运算框架，最初是由加州大学柏克莱分校AMPLab所开发。
+相对于Hadoop的MapReduce会在运行完工作后将中介数据存放到磁盘中，Spark使用了存储器内运算技术，能在数据尚未写入硬盘时即在存储器内分析运算。
+Spark在存储器内运行程序的运算速度能做到比Hadoop MapReduce的运算速度快上100倍，即便是运行程序于硬盘时，Spark也能快上10倍速度。
+
+Apache Spark项目包含下列几项：弹性分布式数据集（RDDs）、Spark SQL、Spark Streaming、MLlib和GraphX。
+Spark提供了分布式任务调度，调度和基本的I/O功能。
+Spark的基础程序抽象是弹性分布式数据集（RDDs），RDD一个可以并行操作、有容错机制的数据集合。
+RDDs可以透过引用外部存储系统的数据集创建（例如：共享文件系统、HDFS、HBase或其他 Hadoop 数据格式的数据源），
+或者是透过在现有RDDs的转换而创建（比如：map、filter、reduce、join等等）。 
+
+\subsection{图数据实现}
+
+为了在Spark上进行图划分，本文将先介绍\texttt{Node}和\texttt{Graph}这两个类的基本情况。
+
+\subsubsection{\texttt{Node}类}
+
+\texttt{Node}类是图数据处理的基础。
+
+\begin{table}[htbp]
+    \centering
+    \caption{\texttt{Node}类主要属性}
+    \begin{tabular}{ccc}
+        \hline
+        属性& 类型 & 定义\\
+        \hline
+        idx         & String             & 节点的唯一Id \\
+        neighbour   & Map[String,Double] & 节点的所有近邻节点\\
+        E           & Double             & 外部权重，即节点与其他子图内的节点的连接权重和\\
+        I           & Double             & 内部权重，即节点与本子图内的节点的连接权重和\\
+        partition   & Int                & 节点所在子图的Id\\
+        chosen      & Boolean            & 节点是否与其他子图的节点交换过\\
+        composition & List[Node]         & 该节点的组成节点列表（仅用于节点聚合/拆分过程）\\
+        composLevel & Int                & 该节点的聚合程度（仅用于节点聚合/拆分过程）\\
+        isMark      & Boolean            & 节点是否与其他节点匹配过 \\
+        weight      & Double             & 节点的权重\\
+        \hline
+        \centering
+    \end{tabular}
+\end{table}
+
+\subsubsection{\texttt{Graph}类}
+
+\texttt{Graph}类是将节点和边组合起来。
+
+\begin{table}[htbp]
+    \centering
+    \caption{\texttt{Graph}类主要属性}
+    \begin{tabular}{ccc}
+        \hline
+        属性& 类型 & 定义\\
+        \hline
+        nodeNum & Long & 图内节点的个数 \\
+        edgeRDD & RDD[(Str, Str, Double, Bool)] & 图内所有边数据的RDD形式\\
+        nodeRDD & RDD[Node] & 图内所有节点的RDD形式\\
+        \hline
+        \centering
+    \end{tabular}
+\end{table}
+
+\texttt{edgeRDD}的每项由以下四个部分组成：起点节点Id值、终点节点Id值、边权重、是否已经被匹配。
+
 \subsection{哈希划分算法实现}
+
+\begin{lstlisting}[language=Scala]
+import org.apache.spark.{HashPartitioner, TaskContext}
+import util.Graph
+
+object HashGraphPartition {
+    def partition(graph: Graph, partitions: Int): Graph = {
+        val assigenment = graph.nodeRDD.map(x => (x.getIdx, 0)).partitionBy(
+            new HashPartitioner(partitions)).map(x => (x._1, TaskContext.getPartitionId))
+        graph.buildPartitionGraph(assigenment)
+    }
+}
+\end{lstlisting}
 
 \subsection{谱聚类算法实现}
 
+在Spark中实现谱聚类算法时，可以调用MLlib类库中的Power iteration clustering算法。
+
+幂迭代聚类（Power iteration clustering）由Frank Lin和William W.Cohen提出，最早发表于ICML 2010。
+在数据归一化的逐对相似矩阵上，使用截断的幂迭代，PIC寻找数据集的一个超低维嵌入（低纬空间投影，embedding ）。
+这种嵌入恰好是很有效的聚类指标，使它在真实数据集上总是好于广泛使用的谱聚类方法（比如说NCut）。
+
+\begin{algorithm}[htbp]
+\caption{PIC算法流程}
+\SetAlgoLined
+\KwIn{按行归一化的关联矩阵$W$}
+\KwIn{期望聚类数$k$}
+随机选取一个非零初始向量$v^0$ \\
+\Repeat{$\left|\delta^{t}-\delta^{t-1}\right| \simeq 0$}{
+    $ v^{(t+1)}=\frac{W v^{(t)}}{\left|W v^{(t)}\right|_{1}} $\\
+    $\delta^{(t+1)}=\left|v^{(t+1)}-v^{(t)}\right|$
+    增加$t$值
+}
+使用k-means算法对向量$v^t$中的点进行聚类
+\KwOut{类$C_1,C_2,\cdots,C_K$}
+\end{algorithm}
+
+\begin{lstlisting}[language=Scala]
+def partition(graph: Graph, partitions: Int, maxIter: Int, weightNorm:Boolean): Graph = {
+
+    var weight:scala.collection.Map[String,Double]=null
+    if(weightNorm==true)
+        weight = graph.nodeRDD.map(x=>(x.getIdx,x.getWeight)).collectAsMap()
+
+    def weight_norm(sim:Double,x:String,y:String):Double={
+        if(weightNorm) sim/math.pow(weight(x)*weight(y), 2)
+        else sim
+    }
+
+    val simEdge = graph.edgeRDD.map(
+        x => (x._1.toString.toLong,
+                x._2.toString.toLong,
+                gaussianSimilarity(weight_norm(x._3,x._1,x._2), 1)))
+
+    val modelPIC = new PowerIterationClustering()
+            .setK(partitions) // k : 期望聚类数
+            .setMaxIterations(maxIter) //幂迭代最大次数
+            .setInitializationMode("degree") //使用度初始化
+            .run(simEdge)
+
+    val assign = modelPIC.assignments.map(x => (x.id.toString, x.cluster))
+    graph.buildPartitionGraph(assign)
+    graph
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=Scala]
+def gaussianSimilarity(dist: Double, sigma: Double): Double =
+    math.exp(-dist / (2 * sigma * sigma))
+\end{lstlisting}
+
+
 \subsection{Kernighan-Lin算法实现}
 
+\begin{lstlisting}[language=Scala]
+\end{lstlisting}
+
 \subsection{Metis算法实现}
+
+\begin{lstlisting}[language=Scala]
+def partition(graph: Graph, c:Int, mode:String,weightNorm:Boolean): Graph={
+    var partitionedGraph = graph
+    var level:Int=0 
+
+    // 1.coarsening phase
+    val coarsenRes = coarsen(graph, c,mode)
+    partitionedGraph = coarsenRes._1 // coarsen Graph
+    level = coarsenRes._2  //coarsen level
+
+    // 2.partitioning phase
+    partitionedGraph = initialPartition(partitionedGraph, weightNorm:Boolean)
+    partitionedGraph.printGraph()
+
+    // 3.un-coarsening phase
+    partitionedGraph = refine(partitionedGraph,level) //need level to decide refine order
+
+    partitionedGraph
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=Scala]
+private def coarsen(graph: Graph, c: Int,mode:String): (Graph,Int)={
+    /** Step 1: Coarsening Phase (via Maximal Matching Algorithm)
+        * input:  origin graph G_o,
+        *         coarsening parameter c,
+        *         mode
+        * output: coarsen graph G_c
+    * */
+    var coarsenedGraph = graph
+    var level = 0
+    while(coarsenedGraph.nodeNum > c*k){
+        level += 1
+        coarsenedGraph = maximalMatching(coarsenedGraph, mode,level)
+        coarsenedGraph = refreshMarkedFlag(coarsenedGraph)
+    }
+    (coarsenedGraph,level)
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=Scala]
+private def initialPartition(graph: Graph, useWeightNorm:Boolean): Graph={
+    /** Step 2: Partitioning Phase (via Spectral Clustering)
+        * input:  graph - coarsened graph g
+        *         useWeightNorm - whether to normalize the weights.
+        * output: splitGraph - initial partition graph
+        * */
+    val splitGraph = SpectralClustering.partition(graph, k, 40, useWeightNorm)
+    splitGraph
+}
+\end{lstlisting}
+
+
+\begin{lstlisting}[language=Scala]
+private def refine(graph: Graph,level:Int): Graph={
+    /** Step 3: Refining Phase (via Kernighan-Lin Algorithm)
+        * input: graph - initial partition graph
+        *        level - refine level
+        * output: refined graph
+        * */
+    var refinedGraph = graph
+    var refineLevel = level
+    while(refineLevel!=0){
+        /** Step 1: Split coarsen node to refined nodes. */
+
+        // 1.1 Find coarsen nodes and refine them (new node)
+        var refinedNodeRDD = refinedGraph.nodeRDD.
+                            filter(x=>x.getComposLevel==refineLevel)
+        refinedNodeRDD = refinedNodeRDD.map(_.setCompositionPartition())
+
+        // 1.2 Save the nodes which don't need to refine
+        val nodeRDD = refinedGraph.nodeRDD.filter(x=>x.getComposLevel!=refineLevel)
+        refinedNodeRDD = refinedNodeRDD.flatMap(x=>x.getComposition)
+
+        // 1.3 Union two parts of refined nodes.
+        refinedGraph.nodeRDD = refinedNodeRDD.union(nodeRDD)
+
+        /** Step 2: Partitioning */
+        val assignment = refinedGraph.nodeRDD.map(x=>(x.getIdx,x.getPartition))
+        refinedGraph = KernighanLin.partition(refinedGraph, assignment, needMaxGain = true)
+        refinedGraph.nodeRDD = refinedGraph.nodeRDD.map(_.setChosen(false))
+        refineLevel-=1 //refine Level decrease 1, up refine
+    }
+
+    refinedGraph.nodeNum = refinedGraph.nodeRDD.count()
+    refinedGraph
+}
+\end{lstlisting}
+
