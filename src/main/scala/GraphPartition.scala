@@ -43,16 +43,16 @@ object GraphPartition {
     def main(args: Array[String]): Unit = {
 
 
-        val edgeRDD = readGraph(args(0), true).persist()
+        val edgeRDD = readGraph(args(0), args(1).toBoolean).persist()
         var graph = new Graph(edgeRDD) //构建图
 
         val startTime = new Date().getTime
 //        // seed=324,12324,2324
-        //graph = KernighanLin.partition(graph, 123, true) //运行算法324,1,11324
-        //graph = SpectralClustering.partition(graph,2,40,false)
+//        graph = KernighanLin.partition(graph, 123, true) //运行算法324,1,11324
+        graph = SpectralClustering.partition(graph,3,30,false)
 //          graph = HashGraphPartition.partition(graph,3)
 //        //mode=random or heavy
-        graph = new MetisPartition(2).partition(graph, 15,"random",false)
+        //graph = new MetisPartition(3).partition(graph, 15,"random",false)
         val endTime = new Date().getTime
         println("运行时间=" + (endTime - startTime) / 1000.0)
 //
