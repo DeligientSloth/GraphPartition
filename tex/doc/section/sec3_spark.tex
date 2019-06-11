@@ -62,7 +62,10 @@ RDDs可以透过引用外部存储系统的数据集创建（例如：共享文�
 \texttt{edgeRDD}的每项由以下四个部分组成：起点节点Id值、终点节点Id值、边权重、是否已经被匹配。
 
 \subsection{哈希划分算法实现}
-
+将graph里面的nodeRDD通过map转化为KV类型的RDD:(idx,分区号)，
+根据输入的划分子图个数重新进行hash partition：hash(idx)%划分子图个数
+通过在executor上面的taskcontext得到每一条记录的分区号，得到(idx,分区号)的KV RDD形式
+然后调用graph.buildPartitionGraph程序，根据得到的分区RDD结果更新graph的nodeRDD
 \begin{lstlisting}[language=Scala]
 import org.apache.spark.{HashPartitioner, TaskContext}
 import util.Graph
@@ -78,12 +81,15 @@ object HashGraphPartition {
 
 \subsection{谱聚类算法实现}
 
-在Spark中实现谱聚类算法时，可以调用MLlib类库中的Power iteration clustering算法。
+谱聚类的核心思想是最小化子图之间的连边权重，具体做法是对拉普拉斯矩阵求最小的k个特征值对应特征向量
+为了控制子图的规模，需要用度矩阵（相似度矩阵的行和）进行归一化。
+但是有两个挑战：
+1、对拉普拉斯矩阵进行特征值分解的复杂度非常高（三次），而且很难实现并行化
+2、metis算法中，如果每个node的权重不一样，很可能产生不平衡分割，需要进行归一化，这会在后面详细讲述
 
-幂迭代聚类（Power iteration clustering）由Frank Lin和William W.Cohen提出，最早发表于ICML 2010。
-在数据归一化的逐对相似矩阵上，使用截断的幂迭代，PIC寻找数据集的一个超低维嵌入（低纬空间投影，embedding ）。
-这种嵌入恰好是很有效的聚类指标，使它在真实数据集上总是好于广泛使用的谱聚类方法（比如说NCut）。
-
+挑战一的解决方案是参考Frank Lin和William W.Cohen提出，发表于ICML 2010的论文。将特征值分解转化为矩阵的迭代乘积
+因为矩阵乘积的并行化在spark底层已经实现并且优化，所以并行化更加简单。具体来说，就是在数据归一化的逐对相似矩阵上，使用截断的幂迭代，寻找数据集的一个超低维嵌入（低纬空间投影，embedding ）。这种嵌入恰好是很有效的聚类指标，使它在真实数据集上总是好于广泛使用的谱聚类方法（比如说NCut）。
+算法的伪代码如下：
 \begin{algorithm}[htbp]
 \caption{PIC算法流程}
 \SetAlgoLined
@@ -99,134 +105,275 @@ object HashGraphPartition {
 \KwOut{类$C_1,C_2,\cdots,C_K$}
 \end{algorithm}
 
-\begin{lstlisting}[language=Scala]
-def partition(graph: Graph, partitions: Int, maxIter: Int, weightNorm:Boolean): Graph = {
-
-    var weight:scala.collection.Map[String,Double]=null
-    if(weightNorm==true)
-        weight = graph.nodeRDD.map(x=>(x.getIdx,x.getWeight)).collectAsMap()
-
-    def weight_norm(sim:Double,x:String,y:String):Double={
-        if(weightNorm) sim/math.pow(weight(x)*weight(y), 2)
-        else sim
-    }
-
-    val simEdge = graph.edgeRDD.map(
-        x => (x._1.toString.toLong,
-                x._2.toString.toLong,
-                gaussianSimilarity(weight_norm(x._3,x._1,x._2), 1)))
-
-    val modelPIC = new PowerIterationClustering()
-            .setK(partitions) // k : 期望聚类数
-            .setMaxIterations(maxIter) //幂迭代最大次数
-            .setInitializationMode("degree") //使用度初始化
-            .run(simEdge)
-
-    val assign = modelPIC.assignments.map(x => (x.id.toString, x.cluster))
-    graph.buildPartitionGraph(assign)
-    graph
-}
-\end{lstlisting}
-
-\begin{lstlisting}[language=Scala]
-def gaussianSimilarity(dist: Double, sigma: Double): Double =
-    math.exp(-dist / (2 * sigma * sigma))
-\end{lstlisting}
 
 
 \subsection{Kernighan-Lin算法实现}
 
+KL的思想是对于给定的图划分，尝试交换不同分区的点，计算交换带来的增益，选择增益大于0并且最大
+的点来交换，直到达到局部最优（所有点对交换的增益都小于等于0）
+对于spark分布式计算而言，KL算法首先会根据输入的初始化图划分计算，构建划分图。这里构建划分图提供了好几种模式，
+主要是基于nodeRDD(针对nodeRDD已经存在的情况)构建，以及基于edgeRDD构建(nodeRDD还不存在)两种，
+基于nodeRDD的核心是根据邻居是否与自己在一个分区来计算这个节点跟内部和外部的连接权重。
+def buildPartitionGraph():Graph={
+        if(this.nodeRDD==null) buildGraph()
+        val map_idx_partition = this.nodeRDD.map(x=>(x.getIdx,x.getPartition)).collectAsMap()
+        this.nodeRDD=this.nodeRDD.map(
+            x=>{
+                val neighbour = x.getNeighbour
+                var E = 0.0
+                var I = 0.0
+                for (elem <- neighbour) {
+                    if(map_idx_partition.contains(elem._1)){
+                        if(map_idx_partition(elem._1)==x.getPartition)
+                            I+=elem._2
+                        else
+                            E+=elem._2
+                    }
+                }
+                x.setE(E).setI(I)
+            }
+        )
+        this
+    }
+瓶颈在于在数据量很大的时候，这种基于map表查询的方法存在性能瓶颈，更好的方法是通过join来实现节点邻居和分区信息的聚合，具体做法如下：
+
+随后KL算法会更新nodeRDD里面的各个属性（主要是E和I），E和I在KL算法执行过程中会迭代更新,伪代码如下：
+
+KL partition
+input:graph,assignment RDD(node idx->partition id)
+output:graph
+
+while(还存在可以交换增益大于0的点){
+   找到最大增益的点对node a和node b
+   graph.swapUpdate(node a,node b)
+}
+
+在迭代的每一步，KL算法首先是确定最大增益的点，优点是足够准确，需要的迭代次数较少，缺点是每次需要计算大量点对的增益。在spark分布式实现上，具体做法是求出nodeRDD的笛卡尔积，去除一些没必要计算的点之后求出点对之间的增益。
+只保留大于0的增益，然后通过reduce算子求出增大增益的点对。
 \begin{lstlisting}[language=Scala]
+def getMaxGain(nodeUnChosen: RDD[Node]): (Node, Node, Double) = {
+        val node_gain = nodeUnChosen.cartesian(nodeUnChosen).filter(
+            x => x._1.getPartition != x._2.getPartition
+        ).map(x => {
+            (x._1, x._2, x._1.swapGain(x._2))
+        }).persist()
+
+        val pos_gain = node_gain.filter(_._3 > 0)
+        if (pos_gain.isEmpty()) null
+        else pos_gain.reduce((x, y) => {
+            if (x._3 >= y._3) x else y
+        })
+    }
 \end{lstlisting}
+
+针对最大增益需要计算大量点对的情况，本项目提出了两种优化思路：
+
+1、Stochastic Max Gain
+每次只找到增益大于0的点就交换，类似于机器学习里面的sgd，整个优化过程非常曲折
+其中第二种策略是我们用KL算法在standford开源的Facebook数据集上面做实验的时候，发现
+每次找最大增益都花了很多时间才想出来的，但是第二种策略每次交换的增益很低，比较难收敛
+
+2、Mini-Partition Max Gain
+可以把nodeRDD或者nodeRDD的笛卡尔积分成很多个分区，每次随机取一个分区计算最大
+增益的点对进行交换，对应机器学习里面用一个mini batch的数据进行gradient descent，
+暂时没有实现
+
+选择完交换的点之后，需要更新相关的点的E和I。具体做法是调用graph类的update方法，内部通过用map算子对
+nodeRDD每一个node记录分布式调用node class的update方法，node class的update方法
+会根据点与交换两个点的连接关系更新E和I，每一次交换，程序都会记录performance的变化，便于观察。伪代码如下
+
+graph.swapUpdate的细节是调用点的swapUpdate方法：
+this.nodeRDD = this.nodeRDD.map(
+            x => x.swapUpdate(swap_node_a, swap_node_b)
+        )
+
+input:node d
+out put:update node d
+if 节点d是节点a本身
+    d.E = a.I+edgeWeight(a,b)
+    d.I = a.E-edgeWeight(a,b)
+else if 节点d是节点b本身
+    d.E = b.I+edgeWeight(a,b)
+    d.I = b.E-edgeWeight(a,b)
+else if 节点d跟节点a在一个分区
+    d.E = d.I-edgeWeight(d,a)+edgeWeight(d,b)
+    d.I = d.E+edgeWeight(d,a)-edgeWeight(d,b)
+else if 节点d跟节点b在一个分区
+    d.E = d.I+edgeWeight(d,a)-edgeWeight(d,b)
+    d.I = d.E-edgeWeight(d,a)+edgeWeight(d,b)
+
+对应的scala代码为：
+if (is_node_a)
+            return this.setE(I_a + weight_ab).setI(E_a - weight_ab).
+                    setChosen(true).setPartition(swap_node_b.getPartition)
+        if (is_node_b)
+            return this.setE(I_b + weight_ab).setI(E_b - weight_ab).
+                    setChosen(true).setPartition(swap_node_a.getPartition)
+
+        val weight_a = this.edgeWeight(swap_node_a)
+        val weight_b = this.edgeWeight(swap_node_b)
+
+        if (weight_a == 0.0 && weight_b == 0.0) return this
+
+        if (in_a_graph)
+            this.setI(
+                this.getI - weight_a + weight_b
+            ).setE(
+                //这些点的E增加了与a连接的权重
+                this.getE + weight_a - weight_b
+            )
+        else
+            this.setI(
+                this.getI + weight_a - weight_b
+            ).setE(
+                //这些点的E增加了与a连接的权重
+                this.getE - weight_a + weight_b
+            )
 
 \subsection{Metis算法实现}
+metis算法主要是通过最大匹配，合并匹配点，来实现图的粗化，得到粗化的图之后调用一些图划分算法（比如谱聚类）
+将图划分为k个子图，然后对图进行细化，也就是将原来粗化的图一步步还原回来，由于在粗化的图上面进行图划分会有
+信息丢失，还原之后得到图划分不一定是最优的图划分，所以需要用KL算法来微调（交换一些点）
 
-\begin{lstlisting}[language=Scala]
-def partition(graph: Graph, c:Int, mode:String,weightNorm:Boolean): Graph={
-    var partitionedGraph = graph
-    var level:Int=0 
-
-    // 1.coarsening phase
-    val coarsenRes = coarsen(graph, c,mode)
-    partitionedGraph = coarsenRes._1 // coarsen Graph
-    level = coarsenRes._2  //coarsen level
-
-    // 2.partitioning phase
-    partitionedGraph = initialPartition(partitionedGraph, weightNorm:Boolean)
-    partitionedGraph.printGraph()
-
-    // 3.un-coarsening phase
-    partitionedGraph = refine(partitionedGraph,level) //need level to decide refine order
-
-    partitionedGraph
+粗化
+metis的粗化过程会一直执行，知道图中的点小于c*k个，k是程序输入，表示划分成几个图，c是超参数，一般取10-15
+while(graph.nodeNum<c*k)
+   找出图中所有的最大匹配边
+   合并最大匹配的边对应的两个点
+   状态回滚
 }
-\end{lstlisting}
+其中最大匹配的伪代码如下：
+while(还存在可以匹配的边){
+找出下一条匹配的边
+合并两个点，更新nodeRDD以及edgeRDD
+}
 
-\begin{lstlisting}[language=Scala]
-private def coarsen(graph: Graph, c: Int,mode:String): (Graph,Int)={
-    /** Step 1: Coarsening Phase (via Maximal Matching Algorithm)
-        * input:  origin graph G_o,
-        *         coarsening parameter c,
-        *         mode
-        * output: coarsen graph G_c
-    * */
-    var coarsenedGraph = graph
-    var level = 0
-    while(coarsenedGraph.nodeNum > c*k){
-        level += 1
-        coarsenedGraph = maximalMatching(coarsenedGraph, mode,level)
-        coarsenedGraph = refreshMarkedFlag(coarsenedGraph)
+
+其中的核心是找最大匹配边，这里采用了两种策略，一种是heavy Edge，一种是random Heavy Edge
+heavy Edge每次通过reduce算子找到两个端点都没有匹配过的边里面最大权重的边(filter,reduce)
+random Heavy Edge每次随机找一个点，找出与这个点连接的所有边的最大权重(takeSample,filter与reduce)
+
+heavyEdge的缺点是每次只找最大的匹配边，粗化过程需要多次调用这样的最大匹配算法，容易形成匹配边聚集，影响划分效果
+random Heavy Edge:通过随机采样，避免匹配点聚集，让划分更加均衡，但是依赖随机采样的数据点
+
+粗化过程中的数据结构更新
+实时更新nodeRDD以及edgeRDD的核心思路是通过filter和map算子，
+首先求出A和B的union neighbour，对于A和B都连接到的点C，设置edgeWeight=edgeWeight(AC)+edgeWeight(BC)(map算子)
+新建一个node类，设置neighbour为A与B的union，composition为nodeA,nodeB,weight为原来原来A和B之和
+表示是否匹配的变量isMark设置为true
+首先filter掉nodeB
+然后通过map算子处理nodeRDD,对于节点A，直接重新赋值为new Node
+根据new Node得到一个edgeMap，是(起点，终点)->到权重的映射，表示需要更新的边，用于更新edgeRDD
+对于与A和B都连接的点D，连接到new Node的edgeWeight更新为edgeWeight(DA)+edgeWeight(DB)
+对于与只与A连接的点D，连接到new Node的edgeWeight更新为edgeWeight(DA)
+对于与只与B连接的点D，连接到new Node的edgeWeight更新为edgeWeight(DB)
+edgeMap+=(D,new Node)->weight(D->new Node)
+
+然后更新edgeRDD,map每一条记录，更新权重，每条边只要有一个点被匹配，isMark参数就被设置为true
+
+
+union两个节点的邻居的scala代码如下：
+unionMap = nodeA.neighbour++nodeB.neighbour
+intersetNeighbour = nodeA.neighbour.keySet & nodeB.neighbour.keySet
+unionMap.map(
+   x=>if(x in intersetNeighbour)
+    (x._1,nodeA.edgeWeight(x._1) + nodeB.edgeWeight(x._1))
+)
+
+
+node RDD在更新过程中会维护一个需要更新的边表（需要更新的边较少，内存可以存下来），更新的scala代码如下：
+
+val newNode = mergeNode(node1,node2,level)
+        var neighbourEdgeMap: Map[(String,String),Double] =
+            newNode.getNeighbour.map(x=>((newNode.getIdx,x._1),x._2))
+
+graph.nodeRDD = graph.nodeRDD.filter(
+    _.getIdx!=node2.getIdx
+).map(x=>
+    if(x.getIdx==node1.getIdx) newNode
+    else{
+
+        val weight = x.edgeWeight(node1)+x.edgeWeight(node2)
+
+        if(weight!=0) {
+            neighbourEdgeMap += (x.getIdx,newNode.getIdx)->weight
+            x.popNeighbour(node1).popNeighbour(node2).
+                    pushNeighbour((newNode.getIdx,weight))
+        }
+        else x
     }
-    (coarsenedGraph,level)
-}
-\end{lstlisting}
-
-\begin{lstlisting}[language=Scala]
-private def initialPartition(graph: Graph, useWeightNorm:Boolean): Graph={
-    /** Step 2: Partitioning Phase (via Spectral Clustering)
-        * input:  graph - coarsened graph g
-        *         useWeightNorm - whether to normalize the weights.
-        * output: splitGraph - initial partition graph
-        * */
-    val splitGraph = SpectralClustering.partition(graph, k, 40, useWeightNorm)
-    splitGraph
-}
-\end{lstlisting}
-
-
-\begin{lstlisting}[language=Scala]
-private def refine(graph: Graph,level:Int): Graph={
-    /** Step 3: Refining Phase (via Kernighan-Lin Algorithm)
-        * input: graph - initial partition graph
-        *        level - refine level
-        * output: refined graph
-        * */
-    var refinedGraph = graph
-    var refineLevel = level
-    while(refineLevel!=0){
-        /** Step 1: Split coarsen node to refined nodes. */
-
-        // 1.1 Find coarsen nodes and refine them (new node)
-        var refinedNodeRDD = refinedGraph.nodeRDD.
-                            filter(x=>x.getComposLevel==refineLevel)
-        refinedNodeRDD = refinedNodeRDD.map(_.setCompositionPartition())
-
-        // 1.2 Save the nodes which don't need to refine
-        val nodeRDD = refinedGraph.nodeRDD.filter(x=>x.getComposLevel!=refineLevel)
-        refinedNodeRDD = refinedNodeRDD.flatMap(x=>x.getComposition)
-
-        // 1.3 Union two parts of refined nodes.
-        refinedGraph.nodeRDD = refinedNodeRDD.union(nodeRDD)
-
-        /** Step 2: Partitioning */
-        val assignment = refinedGraph.nodeRDD.map(x=>(x.getIdx,x.getPartition))
-        refinedGraph = KernighanLin.partition(refinedGraph, assignment, needMaxGain = true)
-        refinedGraph.nodeRDD = refinedGraph.nodeRDD.map(_.setChosen(false))
-        refineLevel-=1 //refine Level decrease 1, up refine
+)
+edge RDD可以根据之前需要更新的边表来更新，scala代码如下
+graph.edgeRDD = graph.edgeRDD.filter
+    { x =>
+        !((x._1 == node1.getIdx && x._2 == node2.getIdx) ||
+                (x._1 == node2.getIdx) && (x._2 == node1.getIdx))
     }
 
-    refinedGraph.nodeNum = refinedGraph.nodeRDD.count()
-    refinedGraph
-}
-\end{lstlisting}
+
+graph.edgeRDD=graph.edgeRDD.map(
+    x=>
+            //which node are node1,node2
+        if(x._1==node1.getIdx||x._1==node2.getIdx)
+            (newNode.getIdx,x._2,x._3,true)
+        else if(x._2==node1.getIdx||x._2==node2.getIdx)
+            (x._1,newNode.getIdx,x._3,true)
+        else x
+).map(
+    x=>
+        if(neighbourEdgeMap.contains((x._1,x._2)))
+            (x._1,x._2,neighbourEdgeMap((x._1,x._2)),true)
+        else x
+).distinct()
+
+另外，粗化过程的最大匹配每次都是组合两个点，需要记录这两个点的信息，因此在node类的属性上加入了composition和compositionLevel属性，分别表示这个节点由那两个节点组合而成，以及是在粗化的哪一个阶段组合而成。
+
+划分
+划分主要通过调用谱聚类完成，但是前面提到heavy Edge策略的时候，空间上容易形成聚集，而这些聚集的点
+与其他点的连接权重还会增加，所以这些点很容易聚成一类，解决方法是对拉普拉斯矩阵用点的weight进行归一化
+原来用度矩阵的时候，使用度矩阵归一化，目标是求D^(-1/2)LD^(-1/2)，
+归一化之后，L矩阵本质上对每一个项目是L_{ij}/sqrt(D_i)sqrt(D_j)
+现在归一化weight也采用相似的思路，L矩阵每一个项变为：
+L_{ij}/sqrt(D_i)sqrt(D_j)weight(i)weight(j)
+实验过程中发现对于均衡性的改善还不够，于是我用node权重alpha次方进行归一化：
+L_{ij}/sqrt(D_i)sqrt(D_j)weight(i)^alpha weight(j)^alpha
+对应的矩阵形式为:
+Wnode^(-alpha)D^(-1/2)LD^(-1/2)Wnode^(-alpha)
+实现过程中发现alpha=2效果较好
+
+细化过程
+细化过程本质上是递归的分解组合点，是粗化的逆过程，类似一个堆栈的出栈过程
+需要根据每个点记录的compositionLevel属性确定“出栈”的顺序，直到compositionLevel=0说明已经到达“栈顶”，无需继续细化。细化过程是针对nodeRDD展开的，用flatmap算子对当前细化层次的node分解其composition，得到两个新的点，对于不需要分解的点直接拷贝过来。通过union两部分nodeRDD得到细化图的nodeRDD，然后调用KL算法微调（本项目写的KL算法，本身支持K-way）
+scala代码如下
+var refinedGraph = graph
+        var refineLevel = level
+
+        //refine Level = 0 indicates that nodes all
+        while(refineLevel!=0){
+            /** Step 1: Split coarsen node to refined nodes. */
+
+            // 1.1 Find coarsen nodes and refine them (new node)
+            var refinedNodeRDD = refinedGraph.nodeRDD.filter(x=>x.getComposLevel==refineLevel)
+
+            refinedNodeRDD = refinedNodeRDD.map(_.setCompositionPartition())
+
+            // 1.2 Save the nodes which don't need to refine
+            val nodeRDD = refinedGraph.nodeRDD.filter(x=>x.getComposLevel!=refineLevel)
+            refinedNodeRDD = refinedNodeRDD.flatMap(x=>x.getComposition)
+
+            // 1.3 Union two parts of refined nodes.
+            refinedGraph.nodeRDD = refinedNodeRDD.union(nodeRDD)
+
+
+            /** Step 2: Partitioning */
+            val assignment = refinedGraph.nodeRDD.map(x=>(x.getIdx,x.getPartition))
+
+            refinedGraph = KernighanLin.partition(refinedGraph, assignment, needMaxGain = true)
+            refinedGraph.nodeRDD = refinedGraph.nodeRDD.map(_.setChosen(false))
+
+            refineLevel-=1 //refine Level decrease 1, up refine
+        }
+
+
+
 
