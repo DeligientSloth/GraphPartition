@@ -29,18 +29,69 @@ class Node(__idx: String,
         this.weight=weight
     }
 
+    def getIdx: String = this.idx
+
+    def getNeighbour: Map[String,Double] = this.neighbour
+
+    def setNeighbour(neighbour:Map[String,Double]): Node = {
+        this.neighbour = neighbour
+        this
+    }
+
+    def getE: Double = this.E
+
     def setE(E: Double): Node = {
         this.E = E
         this
     }
+
+    def getI: Double = this.I
 
     def setI(I: Double): Node = {
         this.I = I
         this
     }
 
-    def setNeighbour(neighbour:Map[String,Double]): Node = {
-        this.neighbour = neighbour
+    def getPartition: Int = this.partition
+
+    def setPartition(partition: Int): Node = {
+        this.partition = partition
+        this
+    }
+
+    def getChosen: Boolean = this.chosen
+
+    def setChosen(chosen: Boolean): Node = {
+        this.chosen = chosen
+        this
+    }
+
+    def getComposition: List[Node] = this.composition
+
+    def setComposition(composition:List[Node],composLevel:Int): Node = {
+        this.composition = composition
+        this.composLevel = composLevel
+        this
+    }
+
+    def getIsMark: Boolean = this.isMark
+
+    def setIsMark(isMark: Boolean): Node = {
+        this.isMark = isMark
+        this
+    }
+
+    def getWeight: Double = this.weight
+
+    def setWeight(weight:Double): Node = {
+        this.weight = weight
+        this
+    }
+
+    def getComposLevel:Int = this.composLevel
+
+    def setCompositionPartition(): Node = {
+        this.composition.map(_.setPartition(this.partition))
         this
     }
 
@@ -53,57 +104,6 @@ class Node(__idx: String,
         this.neighbour+=neighbourNode
         this
     }
-
-    def setChosen(chosen: Boolean): Node = {
-        this.chosen = chosen
-        this
-    }
-
-    def setPartition(partition: Int): Node = {
-        this.partition = partition
-        this
-    }
-
-    def setCompositionPartition(): Node = {
-        this.composition.map(_.setPartition(this.partition))
-        this
-    }
-
-    def setIsMark(isMark: Boolean): Node = {
-        this.isMark = isMark
-        this
-    }
-
-    def setComposition(composition:List[Node],composLevel:Int): Node = {
-        this.composition = composition
-        this.composLevel = composLevel
-        this
-    }
-
-    def setWeight(weight:Double): Node = {
-        this.weight = weight
-        this
-    }
-
-    def getIdx: String = this.idx
-
-    def getNeighbour: Map[String,Double] = this.neighbour
-
-    def getE: Double = this.E
-
-    def getI: Double = this.I
-
-    def getChosen: Boolean = this.chosen
-
-    def getPartition: Int = this.partition
-
-    def getIsMark: Boolean = this.isMark
-
-    def getComposition: List[Node] = this.composition
-
-    def getWeight: Double = this.weight
-
-    def getComposLevel:Int = this.composLevel
 
     def isNeighbour(otherNode:Node):Boolean= {
         this.neighbour.contains(otherNode.getIdx)
