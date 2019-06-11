@@ -12,7 +12,11 @@ RDDs可以透过引用外部存储系统的数据集创建（例如：共享文�
 
 \subsection{图数据实现}
 
-为了在Spark上进行图划分，本文将先介绍\texttt{Node}和\texttt{Graph}这两个类的基本情况。
+为了在Spark上进行图划分，本文将先介绍\texttt{Node}和\texttt{Graph}这两个类的基本情况。Graph类主要用edgeRDD，以及nodeRDD表示(分布式存储和计算)。其中edgeRDD每一条记录用(sourceNode,targetNode,weight,isMatch)表示。
+nodeRDD每一条记录是一个Node类，Node类的属性主要包括idx，neighbour，E,I,partition,chosen(是否被KL交换过)，
+以及有哪些点组成（metis）,ismark(是否是匹配点)，以及weight（metis组合点）。
+Graph类和Node类包含了大量的基础函数，包括根据输入的edge，构建nodeRDD；
+根据分区结果计算Node的属性，包括E和I；以及交换了两个点之后，应该如何调整E和I,以及图划分指标的计算等等。
 
 \subsubsection{\texttt{Node}类}
 
