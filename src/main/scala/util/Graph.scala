@@ -4,11 +4,11 @@ import org.apache.spark.rdd.RDD
 
 class Graph extends Serializable {
 
-    var edgeRDD: RDD[(String, String, Double, Boolean)] = _
+    var edgeRDD: RDD[(String, String, Double, Boolean)] = _//edge的RDD组成，(起点，终点，权重，是否是匹配边)
     //directed and undirected
-    var nodeNum:Long = 0
+    var nodeNum:Long = 0//图内node的个数
 
-    var nodeRDD: RDD[Node] = _
+    var nodeRDD: RDD[Node] = _//图内所有node的RDD组成，每条记录都是node类
 //    var map_idx_partition: Map[String, Int] = _ //test mode use
     def this(edge: RDD[(String,String,Double)])={
         this()
@@ -45,10 +45,12 @@ class Graph extends Serializable {
                 var E = 0.0
                 var I = 0.0
                 for (elem <- neighbour) {
-                    if(map_idx_partition(elem._1)==x.getPartition)
-                        I+=elem._2
-                    else
-                        E+=elem._2
+                    if(map_idx_partition.contains(elem._1)){
+                        if(map_idx_partition(elem._1)==x.getPartition)
+                            I+=elem._2
+                        else
+                            E+=elem._2
+                    }
                 }
                 x.setE(E).setI(I)
             }
@@ -162,7 +164,7 @@ class Graph extends Serializable {
         inner_external_Weight._1 / inner_external_Weight._2
     } // end of graphPartitionEvaluation
 
-    def Print() = {
+    def printGraph() = {
         nodeRDD.foreach(x=>x.Print())
         nodeRDD.map(
             x => (x.getPartition, x.getIdx)
