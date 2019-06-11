@@ -22,6 +22,7 @@ Hash Partition没有考虑到子图之间的连接关系，只是简单的根据
 
 Kernighan–Lin algorithm通过随机划分数据集来做实验，因为Kernighan–Lin algorithm对初始化数据集划分比较敏感的影响，因此我们实验设置不同seed的来初始化划分数据集，Kernighan–Lin algorithm算法的图划分质量如下
 
+不同初始化划分下，Kernighan–Lin algorithm的performance的差异
 seed  &划分performance 
 324   &9.353000586441842
 3241  &11.619001054402
@@ -30,11 +31,14 @@ seed  &划分performance
 另外，我们还画出了三种seed的情况下，Kernighan–Lin algorithm算法每次数据点交换迭代过程中，图划分质量的变化曲线，
 可见，Kernighan–Lin algorithm算法的贪心策略还是有效的，每次交换数据都能带来performance的提高
 
-\subsection{谱聚类}
-谱聚类求归一化的拉普拉斯矩阵的特征值和特征向量的时候，是用幂迭代法实现的。因此需要设置最大迭代次数，下面实验了
-最大迭代次数为20,10,20三种情况下，图划分的质量以及运行时间。
+Kernighan–Lin algorithm随点交换的performance变化图
+\figure{../figure/KL.png}
 
-AAAI network
+\subsection{谱聚类}
+谱聚类求归一化的拉普拉斯矩阵的特征值和特征向量的时候，是用幂迭代法实现的。因此需要设置最大迭代次数，下面在AAAI network下面实验了最大迭代次数为20,10,20三种情况下，图划分的质量以及运行时间。
+
+
+      AAAI network下谱聚类的performance与运行时间与最大迭代次数的关系
 最大迭代次数 &划分performance      &运行时间
 2           &39.32289045366845    &4.134
 10          &70.58323798892366    &7.184
@@ -43,7 +47,7 @@ AAAI network
 不难得出结论：在AAAI的图数据集上，谱聚类在10轮之内就收敛了。再增加迭代次数对提高图划分的质量没有任何帮助。此外，适当降低迭代次数，能过显著降低运行时间
 但是在Zachary数据集上，迭代次数有所不一样
 
-Zachary network
+    Zachary network下谱聚类的performance与运行时间与最大迭代次数的关系
 最大迭代次数 &划分performance      &运行时间
 20          &4.2                  &7.573
 30          &5.5                   &9.28
@@ -54,6 +58,7 @@ Zachary network
 \subsection{最大匹配策略实验}
 在实际实验过程中发现，使用naive的heavy edge策略在进行多次粗化之后匹配点会形成聚集，使得划分阶段的谱聚类的划分不平衡。前面提到可以通过weight normalization来在一定程度上缓解这种不平衡划分，下面固定参数c=35，分别实验了heavy edge(HE)，heavy edge with WN（结合weight normalization,HEWN），random heavy edge(RHE)，random heavy edge with weight normalization(RHEWN)四种策略下，划分的质量比较：
 
+     AAAI network下metis四种最大匹配策略的performance
 策略        &划分performance   
 heavy edge(HE) &53.95506559164985
 heavy edge with WN(HEWN) &78.37563264477501
@@ -67,6 +72,8 @@ random heavy edge with weight normalization(RHEWN) &79.52152205384091
 \subsection{参数c选取实验}
 c控制粗化的程度，当粗化得到点的个数小于等于c*k个的时候，粗化将会停止。一般来说c越大的话，粗化的程度越低，
 信息损耗越少，划分的performance越；但是对partition阶段划分算法的性能要求越高，但是本系统瓶颈在粗化阶段，因此c越大，时间消耗越少。
+
+AAAI network下metis的performance与运行时间与参数c的关系
 c    &划分performance    &运行时间
 c=15 &77.94451753134379 &120.644
 c=25 &79.37368802905935 &114.546
@@ -75,14 +82,16 @@ c=50 &79.52152205384091 &73.314
 
 
 \subsection{谱聚类与metis算法的横向对比}
-下面分别比较当划分子图个数为2个，3个的时候，谱聚类与metis在三个数据集上面得到的图划分质量
+下面分别比较当划分子图个数k为2个，3个的时候，谱聚类与metis在三个数据集上面得到的图划分质量
 在AAAI network上的谱聚类的最大迭代次数取10，metis算法的c取35，
 在Zachary network上谱聚类的最大迭代次数取30，metis算法的c取15
 在Intra-organisational networks上谱聚类最大迭代次数取20，metis算法的c取20
 
-                      k=2
+
+        k=2时，三种数据集下谱聚类与metis的performance与运行时间的横向比较
+                                 k=2
                                   AAAI network                       Zachary network(30)     
-algorithm                   &peformance           &运行时间   &peformance  &运行时间
+algorithm      &peformance           &运行时间   &peformance  &运行时间
 谱聚类          &70.58323798892366    &7.184      &5.5      &9.28
 metis           &79.52152205384091    &80.608     &15.75    &16.455
 
@@ -90,12 +99,11 @@ Intra-organisational networks
 谱聚类   &4.0835509138381205  &7.402
 metis   &4.607476635514018 &22.008
 
-k=3
-
+k=3时，AAAI数据集下谱聚类与metis的performance与运行时间的横向比较
                                  AAAI network                          
 algorithm                   &peformance           &运行时间   
-谱聚类             &25.157246974213972    &16.002      
-metis             &34.0869985482627    &142.937  
+谱聚类             &25.157246974213972           &16.002      
+metis             &34.0869985482627             &142.937  
 
 可以看出，在划分子图个数为2个和3个的时候，metis在不同数据集上，划分的performance都要比谱聚类好，但是metis的运行时间要显著高于谱聚类算法。
 
