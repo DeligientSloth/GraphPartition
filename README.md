@@ -1,2 +1,1 @@
-
-` sbt package "&&" spark-submit --class "KernighanLin" --master local[4] .\target\scala-2.12\sparkgraph_2.12-0.1.jar `
+图划分算法的Spark实现，包括了hash partition，KL算法，谱聚类以及metis算法
